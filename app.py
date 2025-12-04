@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v52.0 資金按鈕修復版)")
+st.markdown("### 🏦 全方位戰情室 AI (v53.0 資金按鈕終極修復版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -47,11 +47,17 @@ if 'data_loaded' not in st.session_state:
     load_data()
     st.session_state.data_loaded = True
 
-# 初始化輸入框變數 (如果還沒有的話)
-if 'input_amt' not in st.session_state: st.session_state.input_amt = 1000.0
+# [關鍵] 初始化輸入框的綁定變數
+if 'trade_amt_box' not in st.session_state: 
+    st.session_state.trade_amt_box = 1000.0
 
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 if 'market' not in st.session_state: st.session_state.market = "加密貨幣"
+
+# --- [關鍵修復] 資金按鈕回調 ---
+def set_amt(ratio):
+    # 直接修改 widget 的 key，強制 UI 更新
+    st.session_state.trade_amt_box = float(st.session_state.balance * ratio)
 
 # --- Helpers ---
 def fmt_price(val):
@@ -83,11 +89,6 @@ def calc_roe_from_price(entry, leverage, direction_str, target_price):
     direction = 1 if "Long" in direction_str or "做多" in direction_str else -1
     try: return float(((target_price - entry) / entry) * leverage * direction * 100)
     except: return 0.0
-
-# --- [關鍵修復] 直接修改 input_amt ---
-def set_amt(ratio):
-    # 直接覆寫輸入框的綁定變數
-    st.session_state.input_amt = float(st.session_state.balance * ratio)
 
 # --- Dialog Functions ---
 @st.dialog("⚡ 倉位管理", width="small")
@@ -534,8 +535,8 @@ if df is not None and not df.empty:
         if c_p3.button("75%", use_container_width=True, on_click=set_amt, args=(0.75,)): pass
         if c_p4.button("Max", use_container_width=True, on_click=set_amt, args=(1.00,)): pass
 
-        # 強制綁定 session_state
-        amt = st.number_input("本金 (U)", value=float(st.session_state.input_amt), min_value=1.0, key="input_amt_box", on_change=lambda: st.session_state.update({"input_amt": st.session_state.input_amt_box}))
+        # [關鍵] 使用 key 綁定 session_state
+        amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_box), min_value=1.0, key="trade_amt_box")
         
         with st.expander("止盈止損 (TP/SL)"):
             new_tp = st.number_input("止盈", 0.0)
