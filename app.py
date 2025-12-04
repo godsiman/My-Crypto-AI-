@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v79.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v79.0 專業會計版)")
+st.set_page_config(page_title="全方位戰情室 AI (v80.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v80.0 ROE下單版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v79.json"
+DATA_FILE = "trade_data_v80.json"
 
 def save_data():
     data = {
@@ -83,15 +83,10 @@ def get_current_price(sym):
     except: pass
     return None
 
-# --- [新功能] 計算凍結資金 ---
 def get_locked_funds():
     locked = 0.0
-    # 累加持倉保證金
-    for p in st.session_state.positions:
-        locked += float(p.get('margin', 0.0))
-    # 累加掛單保證金
-    for o in st.session_state.pending_orders:
-        locked += float(o.get('margin', 0.0))
+    for p in st.session_state.positions: locked += float(p.get('margin', 0.0))
+    for o in st.session_state.pending_orders: locked += float(o.get('margin', 0.0))
     return locked
 
 # --- Indicators ---
@@ -214,23 +209,19 @@ def manage_position_dialog(i, pos, current_price):
             st.toast("✅ 更新成功")
             st.rerun()
 
-# --- [重點修正] 平倉邏輯：只結算盈虧，不退本金(因為本來就沒扣) ---
 def close_position(pos_index, percentage, reason, exit_price):
     if pos_index >= len(st.session_state.positions): return
     pos = st.session_state.positions[pos_index]
     
     close_ratio = percentage / 100.0
     margin = float(pos.get('margin', 0))
-    close_margin = margin * close_ratio # 這次要平掉的保證金部分
+    close_margin = margin * close_ratio 
     
     direction = 1 if pos.get('type') == 'Long' else -1
     entry = float(pos.get('entry', 1))
     lev = float(pos.get('lev', 1))
     
-    # 計算盈虧 (PnL)
     pnl = close_margin * (((exit_price - entry) / entry) * lev * direction)
-    
-    # 資金變動：餘額只加上盈虧 (賺錢加，賠錢減)
     st.session_state.balance += pnl
     
     st.session_state.history.append({
@@ -246,14 +237,11 @@ def close_position(pos_index, percentage, reason, exit_price):
         st.session_state.positions.pop(pos_index)
     else:
         st.session_state.positions[pos_index]['margin'] -= close_margin
-    
     save_data()
 
-# --- [重點修正] 撤單邏輯：不退錢(因為本來就沒扣) ---
 def cancel_order(idx):
     if idx < len(st.session_state.pending_orders):
         st.session_state.pending_orders.pop(idx)
-        # 這裡不需要加回 balance，因為下單時沒扣 balance，只是佔用了可用額度
         save_data()
         st.toast("已撤銷")
 
@@ -294,64 +282,56 @@ if ai_res and df_chart is not None:
     curr_price = ai_res['last_price']
     last_row = df_chart.iloc[-1]
     atr = last_row.get('ATR', curr_price * 0.02)
-    ema20 = last_row.get('EMA20', curr_price)
     
     if "多" in ai_res['direction']:
-        rec_entry = ema20 if ema20 < curr_price else curr_price
-        rec_tp = rec_entry + (atr * 3)
-        rec_sl = rec_entry - (atr * 1.5)
+        rec_entry = curr_price
     else:
-        rec_entry = ema20 if ema20 > curr_price else curr_price
-        rec_tp = rec_entry - (atr * 3)
-        rec_sl = rec_entry + (atr * 1.5)
+        rec_entry = curr_price
 
     # --- Header UI ---
     c1, c2, c3 = st.columns([2, 1, 1])
     is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
     p_color = "#00C853" if is_up else "#FF3D00"
     
-    if curr_price < 1.0:
-        price_display = f"${curr_price:.6f}"
-    else:
-        price_display = f"${curr_price:,.2f}"
+    if curr_price < 1.0: price_display = f"${curr_price:.6f}"
+    else: price_display = f"${curr_price:,.2f}"
 
     c1.markdown(f"""
-    <div style='
-        display: flex; 
-        align-items: center; 
-        line-height: 1.5; 
-        padding-top: 5px; 
-        padding-bottom: 5px;
-        white-space: nowrap;
-        overflow: visible;
-    '>
+    <div style='display: flex; align-items: center; line-height: 1.5; padding-top: 5px; padding-bottom: 5px; white-space: nowrap; overflow: visible;'>
         <span style='font-size: 40px; font-weight: bold; margin-right: 15px; color: #ffffff;'>{symbol}</span>
         <span style='font-size: 30px; color: #cccccc; margin-right: 15px;'>({interval_ui})</span>
         <span style='font-size: 42px; color: {p_color}; font-weight: bold;'>{price_display}</span>
     </div>
     """, unsafe_allow_html=True)
     
-    # [資金計算]
-    balance = st.session_state.balance # 錢包餘額 (本金)
-    locked = get_locked_funds()        # 凍結資金 (保證金)
-    available = balance - locked       # 可用餘額
+    balance = st.session_state.balance
+    locked = get_locked_funds()
+    available = balance - locked
     
-    total_u_pnl = 0
+    # [新功能] 計算總盈虧與總回報率
+    total_u_pnl = 0.0
+    total_margin_used = 0.0
     for p in st.session_state.positions:
         try:
             cur = get_current_price(p['symbol'])
             if cur:
                 d = 1 if p['type']=='Long' else -1
-                total_u_pnl += p['margin'] * (((cur - p['entry'])/p['entry']) * p['lev'] * d)
+                m = float(p.get('margin', 0))
+                pnl = m * (((cur - p['entry'])/p['entry']) * p['lev'] * d)
+                total_u_pnl += pnl
+                total_margin_used += m
         except: pass
     
-    equity = balance + total_u_pnl # 權益 (本金 + 未結盈虧)
+    equity = balance + total_u_pnl
+    
+    # 計算整體回報率 (ROE)
+    total_roe = (total_u_pnl / total_margin_used * 100) if total_margin_used > 0 else 0.0
 
-    # 指標卡片 (顯示 錢包餘額 / 可用餘額 / 權益)
     m1, m2, m3 = st.columns(3)
-    m1.metric("錢包餘額 (Wallet)", f"${balance:,.2f}")
-    m2.metric("可用餘額 (Available)", f"${available:,.2f}")
-    m3.metric("權益 (Equity)", f"${equity:,.2f}", delta=f"{total_u_pnl:+.2f}")
+    m1.metric("錢包餘額", f"${balance:,.2f}")
+    m2.metric("可用餘額", f"${available:,.2f}")
+    # [新功能] 這裡顯示 盈虧金額 (盈虧百分比)
+    m3.metric("總未結盈虧", f"${total_u_pnl:+.2f}", delta=f"{total_roe:+.2f}%")
 
     st.divider()
 
@@ -364,7 +344,6 @@ if ai_res and df_chart is not None:
     fig.add_trace(go.Candlestick(x=df_plot.index, open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'], name='K線'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
-    
     for pos in st.session_state.positions:
         if pos['symbol'] == symbol:
             fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
@@ -372,7 +351,6 @@ if ai_res and df_chart is not None:
     fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['RSI'], line=dict(color='violet', width=2), name='RSI'), row=2, col=1)
     fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
     fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
-    
     fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan', title_text=f"{symbol} - {interval_ui} (台北時間)")
     fig.update_xaxes(rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
@@ -389,21 +367,53 @@ if ai_res and df_chart is not None:
             amt = c_t3.number_input("本金 (U)", min_value=10.0, value=float(st.session_state.trade_amt_box))
             st.session_state.trade_amt_box = amt
             
-            with st.expander("進階 (掛單/止盈損)", expanded=False):
-                t_tp = st.number_input("止盈", value=float(rec_tp), format="%.6f")
-                t_sl = st.number_input("止損", value=float(rec_sl), format="%.6f")
+            with st.expander("進階 (止盈止損)", expanded=True):
+                # [新功能] 切換單位
+                mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
+                
+                # 計算基準價格 (市價或掛單價)
+                base_price = curr_price
+                
+                if mode == "價格":
+                    t_tp = st.number_input("止盈價格", value=0.0, format="%.6f")
+                    t_sl = st.number_input("止損價格", value=0.0, format="%.6f")
+                else:
+                    # ROE 模式：輸入百分比，自動算價格
+                    roe_tp = st.number_input("止盈 ROE % (例如 100)", value=0.0)
+                    roe_sl = st.number_input("止損 ROE % (例如 50)", value=0.0)
+                    
+                    t_tp, t_sl = 0.0, 0.0
+                    if roe_tp > 0:
+                        direction = 1 if "多" in trade_type else -1
+                        # 公式: Entry * (1 + (ROE/100)/Lev * Dir)
+                        t_tp = base_price * (1 + (roe_tp / 100) / lev * direction)
+                        st.caption(f"預估止盈價: {fmt_price(t_tp)}")
+                        
+                    if roe_sl > 0:
+                        direction = 1 if "多" in trade_type else -1
+                        # 止損是虧損，所以 ROE 要變負的
+                        t_sl = base_price * (1 - (roe_sl / 100) / lev * direction)
+                        st.caption(f"預估止損價: {fmt_price(t_sl)}")
+
                 t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
 
             if st.button("🚀 下單 / 掛單", type="primary", use_container_width=True):
-                # [重點修正] 下單檢查的是「可用餘額」
+                # 如果有掛單價，重算 TP/SL (因為基準變了)
+                final_entry = curr_price if t_entry == 0 else t_entry
+                
+                # 如果是 ROE 模式，這裡要重新鎖定最終的 TP/SL 價格
+                if mode == "ROE %":
+                    direction = 1 if "多" in trade_type else -1
+                    if roe_tp > 0: t_tp = final_entry * (1 + (roe_tp / 100) / lev * direction)
+                    if roe_sl > 0: t_sl = final_entry * (1 - (roe_sl / 100) / lev * direction)
+
                 if amt > available:
                     st.error(f"可用餘額不足！ (可用: ${available:.2f})")
                 else:
-                    entry_price = curr_price if t_entry == 0 else t_entry
                     new_pos = {
                         "symbol": symbol,
                         "type": "Long" if "多" in trade_type else "Short",
-                        "entry": entry_price,
+                        "entry": final_entry,
                         "lev": lev,
                         "margin": amt,
                         "tp": t_tp,
@@ -412,7 +422,6 @@ if ai_res and df_chart is not None:
                     }
                     if t_entry == 0:
                         st.session_state.positions.append(new_pos)
-                        # [修正] 這裡不扣 balance，只增加 locked (由 get_locked_funds 自動計算)
                         st.toast(f"✅ 市價成交！")
                     else:
                         st.session_state.pending_orders.append(new_pos)
@@ -435,17 +444,16 @@ if ai_res and df_chart is not None:
                 if p_cur:
                     d = 1 if pos['type']=='Long' else -1
                     pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
+                    roe = (pnl / pos['margin']) * 100
                     clr = "#00C853" if pnl >= 0 else "#FF3D00"
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
-                    
-                    # [保留防崩潰]
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
                     <div style='font-size:14px'>
                         <b>{pos['type']} x{pos['lev']}</b> <span style='color:#aaa'>| 本金 ${pos['margin']:.0f}</span><br>
-                        盈虧: <span style='color:{clr}; font-weight:bold'>${pnl:+.2f}</span>
+                        盈虧: <span style='color:{clr}; font-weight:bold'>${pnl:+.2f} ({roe:+.2f}%)</span>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -460,10 +468,7 @@ if ai_res and df_chart is not None:
             for i, ord in enumerate(st.session_state.pending_orders):
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
-                
-                # [保留防崩潰]
                 c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
-                    
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
                 if c_cnl.button("❌", key=f"cnl_{i}"):
                     cancel_order(i)
