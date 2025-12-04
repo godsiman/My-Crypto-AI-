@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v50.0 完整資訊版)")
+st.markdown("### 🏦 全方位戰情室 AI (v51.0 資金精準版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -47,7 +47,9 @@ if 'data_loaded' not in st.session_state:
     load_data()
     st.session_state.data_loaded = True
 
+# 初始化下單金額
 if 'trade_amt_input' not in st.session_state: st.session_state.trade_amt_input = 1000.0
+
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 if 'market' not in st.session_state: st.session_state.market = "加密貨幣"
 
@@ -82,11 +84,15 @@ def calc_roe_from_price(entry, leverage, direction_str, target_price):
     try: return float(((target_price - entry) / entry) * leverage * direction * 100)
     except: return 0.0
 
+# --- Callbacks for Amount Buttons ---
+def set_amt(ratio):
+    st.session_state.trade_amt_input = st.session_state.balance * ratio
+
 # --- Dialog Functions ---
 @st.dialog("⚡ 倉位管理", width="small")
 def manage_position_dialog(i, pos, current_price):
     st.markdown(f"**{pos['symbol']}** ({pos['type']} x{pos['lev']})")
-    st.caption(f"本金: {pos['margin']} U") # 這裡也顯示本金
+    st.caption(f"本金: {pos['margin']} U")
     st.caption(f"開倉價: {fmt_price(pos['entry'])} | 現價: {fmt_price(current_price)}")
     
     tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
@@ -522,11 +528,13 @@ if df is not None and not df.empty:
         
         st.write("快速選擇本金:")
         c_p1, c_p2, c_p3, c_p4 = st.columns(4)
-        if c_p1.button("25%", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance * 0.25
-        if c_p2.button("50%", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance * 0.50
-        if c_p3.button("75%", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance * 0.75
-        if c_p4.button("Max", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance
+        # 關鍵修正: callback 綁定
+        if c_p1.button("25%", use_container_width=True, on_click=set_amt, args=(0.25,)): pass
+        if c_p2.button("50%", use_container_width=True, on_click=set_amt, args=(0.50,)): pass
+        if c_p3.button("75%", use_container_width=True, on_click=set_amt, args=(0.75,)): pass
+        if c_p4.button("Max", use_container_width=True, on_click=set_amt, args=(1.00,)): pass
 
+        # 這裡的 value 必須與 session_state 連動
         amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_input), min_value=1.0, key="input_amt")
         
         with st.expander("止盈止損 (TP/SL)"):
@@ -592,10 +600,11 @@ if df is not None and not df.empty:
 
                 clr = "#00C853" if u_pnl >= 0 else "#FF3D00"
                 icon = "🟢" if pos['type'] == 'Long' else "🔴"
+                # Updated Card with Margin info
                 st.markdown(f"""
                 <div style="background-color: #262730; padding: 12px; border-radius: 8px; border-left: 5px solid {clr}; margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; font-size: 13px; color: #ccc;">
-                        <span>{icon} {pos['type']} x{pos['lev']} (本金: {pos['margin']:.0f} U)</span>
+                        <span>{icon} {pos['type']} x{pos['lev']} <span style="color:#888;">(本金: {pos['margin']:.0f} U)</span></span>
                         <span>🕒 {pos.get('time','--')}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 5px;">
