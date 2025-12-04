@@ -6,9 +6,9 @@ import plotly.graph_objects as go
 from scipy.signal import argrelextrema
 from datetime import datetime
 
-# --- 1. 頁面設定 (必須在第一行) ---
-st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
-st.title("🏦 全方位戰情室 AI (v31.0 最終修正部署版)")
+# --- 1. 頁面設定 ---
+st.set_page_config(page_title="全方位戰情室 AI (v31.1)", layout="wide")
+st.title("🏦 全方位戰情室 AI (v31.1 終局修復版)")
 
 # --- 2. Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
@@ -18,14 +18,12 @@ if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-
 
 # --- 3. 工具函數 ---
 def fmt_price(val):
-    """ 智能價格格式化 """
     if val is None: return "N/A"
     if val < 0.01: return f"${val:.6f}"
     elif val < 20: return f"${val:.4f}"
     else: return f"${val:,.2f}"
 
 def get_current_price(sym):
-    """ 獲取最新價格 (用於後台計算損益) """
     try:
         ticker = yf.Ticker(sym)
         if hasattr(ticker, 'fast_info') and ticker.fast_info.last_price:
@@ -37,7 +35,7 @@ def get_current_price(sym):
         return None
     return None
 
-# --- 4. 側邊欄設定 (變數定義順序修正) ---
+# --- 4. 側邊欄設定 ---
 st.sidebar.header("🎯 市場與標的")
 
 # 智能搜尋框
@@ -45,7 +43,7 @@ user_symbol_input = st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", va
 
 def smart_parse(s):
     s = s.strip().upper()
-    us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC", "SMCI", "MSTR"]
+    us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC", "SMCI"]
     if "-" in s or "." in s: return s
     if s.isdigit(): return f"{s}.TW"
     if s in us_stocks: return s
@@ -59,7 +57,6 @@ interval_ui = st.sidebar.radio("K 線週期", ["15分鐘", "1小時", "4小時",
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👁️ 視覺化開關")
-# 修正：必須先定義這些變數，後面才能用，不然會報 NameError
 show_six = st.sidebar.checkbox("顯示 六道乾坤帶", value=True)
 show_zigzag = st.sidebar.checkbox("顯示 ZigZag 結構", value=True)
 show_fvg = st.sidebar.checkbox("顯示 FVG 缺口", value=True)
@@ -69,7 +66,7 @@ show_div = st.sidebar.checkbox("顯示 RSI 背離", value=True)
 if st.sidebar.button("🔄 強制刷新盤勢"):
     st.cache_data.clear()
 
-# --- 5. 核心數據處理 ---
+# --- 5. 核心數據處理 (修復參數錯誤) ---
 def get_params(ui_selection):
     if "15分鐘" in ui_selection: return "5d", "15m"
     elif "1小時" in ui_selection: return "1mo", "1h"
@@ -79,11 +76,14 @@ def get_params(ui_selection):
 period, interval = get_params(interval_ui)
 
 @st.cache_data(ttl=60)
-def get_data(symbol, period, interval):
+def get_data(symbol, period, interval, ui_selection): # 這裡接收 ui_selection
     try:
         df = yf.Ticker(symbol).history(period=period, interval=interval)
         if df.empty: return None
-        if interval == "1h" and "6mo" in period: 
+        
+        # 4小時合成邏輯 (使用 ui_selection 判斷)
+        if interval == "1h" and "4小時" in str(ui_selection): 
+            if len(df) < 10: return None
             logic = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
             df = df.resample('4h').apply(logic).dropna()
         
@@ -101,7 +101,7 @@ def get_data(symbol, period, interval):
         return df
     except: return None
 
-# --- 6. 指標演算法 ---
+# --- 6. 指標演算法 (保持不變) ---
 def calculate_zigzag(df, depth=12):
     try:
         df['max_roll'] = df['High'].rolling(window=depth, center=True).max()
@@ -124,7 +124,6 @@ def calculate_fvg(df):
         h, l, c, t = df['High'].values, df['Low'].values, df['Close'].values, df.index
         start = max(2, len(df)-300)
         for i in range(start, len(df)):
-            # 修正 KeyError 'start'
             if l[i] > h[i-2] and c[i-1] > h[i-2]: 
                 bull.append({'start': t[i-2], 'top': l[i], 'bottom': h[i-2], 'active': True})
             if h[i] < l[i-2] and c[i-1] < l[i-2]: 
@@ -222,7 +221,8 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
         st.session_state.positions[pos_index]['margin'] -= close_margin
 
 # --- 主程式 ---
-df = get_data(symbol, period, interval)
+# 這裡傳入 interval_ui，修復了 TypeError 的參數缺失問題
+df = get_data(symbol, period, interval, interval_ui)
 
 if df is not None:
     last = df.iloc[-1]
@@ -239,7 +239,6 @@ if df is not None:
         if st.session_state.positions:
             st.markdown("##### 🔥 持倉列表")
             for i, pos in enumerate(st.session_state.positions):
-                # 自動抓取該幣種最新價 (全域監控)
                 live_price = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
                 
                 if live_price:
@@ -250,9 +249,7 @@ if df is not None:
                     if pos['type'] == 'Long': liq = pos['entry'] * (1 - 1/pos['lev'])
                     else: liq = pos['entry'] * (1 + 1/pos['lev'])
                     
-                    # 卡片 UI
                     with st.container():
-                        # 標題 + 跳轉按鈕
                         c_title, c_jump = st.columns([3, 1])
                         c_title.markdown(f"**#{i+1} {pos['symbol']}**")
                         if pos['symbol'] != symbol:
@@ -262,13 +259,11 @@ if df is not None:
                         
                         c1, c2 = st.columns(2)
                         c1.write(f"{pos['type']} {pos['lev']}x")
-                        # 損益顏色與小數位修正
                         color = "green" if pnl_usdt >= 0 else "red"
                         c2.markdown(f":{color}[**{pnl_usdt:+.2f} U**]")
                         
                         st.caption(f"均價: {fmt_price(pos['entry'])}")
                         
-                        # 自動平倉檢查
                         reason = None
                         if (pos['type']=='Long' and live_price <= liq) or (pos['type']=='Short' and live_price >= liq): reason="💀 爆倉"
                         elif pos['tp']>0 and ((pos['type']=='Long' and live_price >= pos['tp']) or (pos['type']=='Short' and live_price <= pos['tp'])): reason="🎯 止盈"
@@ -289,12 +284,10 @@ if df is not None:
 
         # 開倉區
         st.markdown("##### 🚀 開立新倉位")
-        # 這裡必須使用 st.columns 來避免 NameError
         col_s1, col_s2 = st.columns(2)
-        trade_type = col_s1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
-        leverage = col_s2.number_input("槓桿", 1, 125, 20, key="new_lev")
+        trade_type = c1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
+        leverage = c2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
-        # 資金全開
         principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
         
         with st.expander("進階設定 (TP/SL)"):
