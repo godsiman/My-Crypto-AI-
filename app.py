@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v94.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v94.0 策略回測版)")
+st.set_page_config(page_title="全方位戰情室 AI (v95.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v95.0 精準狙擊回測版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -100,7 +100,7 @@ def calculate_indicators(df):
     df['Total_Vol'] = df['Volume'].cumsum()
     df['VWAP'] = df['Total_VP'] / df['Total_Vol']
     
-    # ADX
+    # ADX (趨勢強度)
     high_diff = df['High'].diff()
     low_diff = -df['Low'].diff()
     df['+DM'] = np.where((high_diff > low_diff) & (high_diff > 0), high_diff, 0.0)
@@ -152,8 +152,8 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- [新功能] 歷史回測引擎 ---
-def run_backtest(df, initial_capital=10000):
+# --- [大腦升級] 精準狙擊回測 ---
+def run_backtest_sniper(df, initial_capital=10000):
     if df is None or len(df) < 50: return None
     
     capital = initial_capital
@@ -162,57 +162,78 @@ def run_backtest(df, initial_capital=10000):
     equity_curve = []
     trades = []
     
-    # 模擬參數
-    leverage = 1 # 回測預設 1倍槓桿看趨勢準度 (避免槓桿放大誤差)
-    
+    # 這裡的邏輯與 get_institutional_strategy 保持一致，甚至更嚴格
     for i in range(50, len(df)):
         curr = df.iloc[i]
         prev = df.iloc[i-1]
         timestamp = df.index[i]
         price = curr['Close']
         
-        # 模擬 AI 評分 (簡化版，確保速度)
+        # 1. 環境過濾 (ADX)
+        # 如果 ADX < 20，視為盤整垃圾時間，強制空手
+        is_trending = curr['ADX'] > 20
+        
+        # 2. 綜合評分
         score = 0
-        if curr['Close'] > curr['EMA20']: score += 1
+        
+        # VWAP 濾網
+        if price > curr['VWAP']: score += 1
         else: score -= 1
         
+        # 均線趨勢
+        if price > curr['EMA20'] and curr['EMA20'] > curr['EMA60']: score += 1
+        elif price < curr['EMA20'] and curr['EMA20'] < curr['EMA60']: score -= 1
+        
+        # 動能 MACD
         if curr['MACD'] > curr['Signal']: score += 1
         else: score -= 1
         
-        if curr['Close'] > curr['EMA7']: score += 1
-        
-        # 交易信號
+        # 3. 決策信號 (只有在趨勢明確時才開倉)
         signal = 0
-        if score >= 2: signal = 1   # Buy
-        elif score <= -2: signal = -1 # Sell
+        if is_trending:
+            if score >= 3: signal = 1   # 強力做多條件
+            elif score <= -3: signal = -1 # 強力做空條件
         
-        # 執行交易
+        # --- 執行交易 (模擬) ---
+        
+        # 進場邏輯
         if position == 0:
             if signal == 1:
                 position = 1
                 entry_price = price
-                trades.append({'time': timestamp, 'type': 'Open Long', 'price': price, 'balance': capital})
+                trades.append({'time': timestamp, 'type': '🟢 做多 (Long)', 'price': price, 'balance': capital})
             elif signal == -1:
                 position = -1
                 entry_price = price
-                trades.append({'time': timestamp, 'type': 'Open Short', 'price': price, 'balance': capital})
+                trades.append({'time': timestamp, 'type': '🔴 做空 (Short)', 'price': price, 'balance': capital})
         
-        elif position == 1: # 持有多單
-            # 出場條件: 反轉信號 或 止損止盈 (這裡用簡單反轉測試)
-            if signal == -1:
+        # 出場邏輯 (或是反手)
+        elif position == 1: # 持多單
+            # 如果分數轉弱 (<0) 就平倉，不一定要等到 -3 反手
+            if score < 0:
                 pnl = (price - entry_price) / entry_price * capital
                 capital += pnl
-                position = -1 # 反手做空
+                position = 0 # 平倉觀望
+                trades.append({'time': timestamp, 'type': '⚪ 平多 (Close Long)', 'price': price, 'pnl': pnl, 'balance': capital})
+            elif signal == -1: # 強力反手訊號
+                pnl = (price - entry_price) / entry_price * capital
+                capital += pnl
+                position = -1
                 entry_price = price
-                trades.append({'time': timestamp, 'type': 'Close Long & Open Short', 'price': price, 'pnl': pnl, 'balance': capital})
+                trades.append({'time': timestamp, 'type': '🔄 反手做空', 'price': price, 'pnl': pnl, 'balance': capital})
         
-        elif position == -1: # 持有空單
-            if signal == 1:
+        elif position == -1: # 持空單
+            if score > 0:
                 pnl = (entry_price - price) / entry_price * capital
                 capital += pnl
-                position = 1 # 反手做多
+                position = 0 # 平倉觀望
+                trades.append({'time': timestamp, 'type': '⚪ 平空 (Close Short)', 'price': price, 'pnl': pnl, 'balance': capital})
+            elif signal == 1: # 強力反手訊號
+                pnl = (entry_price - price) / entry_price * capital
+                capital += pnl
+                position = 1
                 entry_price = price
-                trades.append({'time': timestamp, 'type': 'Close Short & Open Long', 'price': price, 'pnl': pnl, 'balance': capital})
+                trades.append({'time': timestamp, 'type': '🔄 反手做多', 'price': price, 'pnl': pnl, 'balance': capital})
                 
         # 記錄每日權益
         curr_equity = capital
@@ -228,7 +249,6 @@ def run_backtest(df, initial_capital=10000):
 # --- AI Strategy (Live) ---
 @st.cache_data(ttl=120)
 def get_institutional_strategy(symbol, current_interval_ui):
-    # Macro
     macro_intervals = {"M": ("1mo","5y"), "W": ("1wk","2y"), "D": ("1d","1y")}
     macro_trends = {}
     macro_score = 0
@@ -246,7 +266,6 @@ def get_institutional_strategy(symbol, current_interval_ui):
                     macro_score -= 1
         except: macro_trends[tf] = "未知"
 
-    # Micro
     df = get_chart_data(symbol, current_interval_ui)
     if df is None or len(df) < 30: return None
     last = df.iloc[-1]; prev = df.iloc[-2]
@@ -291,7 +310,6 @@ def get_institutional_strategy(symbol, current_interval_ui):
         signals.append("🚀 MACD 金叉")
         micro_score += 2
     
-    # Final Score
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
     direction = "觀望"
     
@@ -568,7 +586,6 @@ if ai_res:
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Trading ---
-    # [新增] 回測分頁
     tab_trade, tab_orders, tab_history, tab_backtest = st.tabs(["⚡ 下單交易", "📋 訂單管理", "📜 歷史訂單", "📈 策略回測"])
     
     with tab_trade:
@@ -676,18 +693,17 @@ if ai_res:
             st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
     with tab_backtest:
-        st.subheader(f"📈 {symbol} 歷史回測 ({interval_ui})")
-        if st.button("🚀 開始回測 (模擬過去500根K線)"):
+        st.subheader(f"📈 {symbol} 歷史回測 (精準狙擊模式)")
+        st.caption("AI 將模擬過去 500 根 K 線，嚴格執行 VWAP + ADX + EMA 策略。")
+        if st.button("🚀 開始回測"):
             with st.spinner("正在穿越時空進行模擬交易..."):
-                eq_curve, trades_log = run_backtest(df_chart, 10000)
+                eq_curve, trades_log = run_backtest_sniper(df_chart, 10000)
             if eq_curve is not None and not eq_curve.empty:
-                # 繪製資金曲線
                 fig_bt = go.Figure()
                 fig_bt.add_trace(go.Scatter(x=eq_curve['time'], y=eq_curve['equity'], mode='lines', name='資金曲線', line=dict(color='#00C853')))
                 fig_bt.update_layout(template="plotly_dark", title="回測資金增長", height=400)
                 st.plotly_chart(fig_bt, use_container_width=True)
                 
-                # 統計數據
                 initial = 10000
                 final = eq_curve['equity'].iloc[-1]
                 total_ret = (final - initial) / initial * 100
@@ -698,7 +714,7 @@ if ai_res:
                 m1, m2, m3 = st.columns(3)
                 m1.metric("期初本金", "$10,000")
                 m2.metric("期末淨值", f"${final:,.2f}", delta=f"{total_ret:+.2f}%")
-                m3.metric("勝率", f"{win_rate:.1f}%", f"{total_trades} 筆交易")
+                m3.metric("勝率 (Win Rate)", f"{win_rate:.1f}%", f"共 {total_trades} 筆交易")
                 
                 if not trades_log.empty:
                     st.write("交易明細：")
