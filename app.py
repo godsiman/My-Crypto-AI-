@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v73.1)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v73.1 導航崩潰修復版)")
+st.set_page_config(page_title="全方位戰情室 AI (v73.2)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v73.2 最終穩定版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -166,10 +166,10 @@ def on_input_change():
         if st.session_state.market == "加密貨幣" and "-" not in val and "USD" not in val: val += "-USD"
         st.session_state.chart_symbol = val
 
-# [核心修復] 將跳轉函數設計為 Callback
+# [核心修復] Callback 函數
 def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
-    st.session_state.symbol_input = "" # 在下一次渲染前清空，不會報錯
+    st.session_state.symbol_input = "" 
 
 # --- Dialogs ---
 @st.dialog("⚡ 倉位管理")
@@ -390,7 +390,7 @@ if ai_res and df_chart is not None:
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     
-                    # [重點修正] 改用 on_click 來調用 jump_to_symbol
+                    # [關鍵修正] 使用 on_click 綁定 Callback
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
@@ -412,7 +412,7 @@ if ai_res and df_chart is not None:
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
                 
-                # [重點修正] 改用 on_click
+                # [關鍵修正] 使用 on_click 綁定 Callback
                 c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
                     
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
