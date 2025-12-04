@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v41.0 彈窗極致版)")
+st.markdown("### 🏦 全方位戰情室 AI (v42.0 資金管理版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -47,6 +47,9 @@ if 'data_loaded' not in st.session_state:
     load_data()
     st.session_state.data_loaded = True
 
+# 初始化下單金額變數 (用於按鈕快速填入)
+if 'trade_amt_input' not in st.session_state: st.session_state.trade_amt_input = 1000.0
+
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 if 'market' not in st.session_state: st.session_state.market = "加密貨幣"
 
@@ -81,8 +84,7 @@ def calc_roe_from_price(entry, leverage, direction_str, target_price):
     try: return float(((target_price - entry) / entry) * leverage * direction * 100)
     except: return 0.0
 
-# --- Dialog Functions (彈窗系統) ---
-# 使用 @st.dialog 裝飾器，這會創建一個模態視窗，不會因為內部互動而關閉
+# --- Dialog Functions ---
 @st.dialog("⚡ 倉位管理", width="small")
 def manage_position_dialog(i, pos, current_price):
     st.markdown(f"**{pos['symbol']}** ({pos['type']} x{pos['lev']})")
@@ -90,7 +92,6 @@ def manage_position_dialog(i, pos, current_price):
     
     tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
     
-    # 平倉分頁
     with tab_close:
         st.write("選擇平倉比例:")
         ratio = st.radio("Ratio", [25,50,75,100], 3, horizontal=True, key=f"d_r_{i}", format_func=lambda x:f"{x}%")
@@ -98,31 +99,24 @@ def manage_position_dialog(i, pos, current_price):
             close_position(i, ratio, "手動", current_price)
             st.rerun()
 
-    # 止盈止損分頁
     with tab_tpsl:
         current_tp = float(pos.get('tp', 0))
         current_sl = float(pos.get('sl', 0))
-        
-        # 這裡切換 Radio 雖然會 rerun，但因為在 Dialog 內，視窗不會關閉！
         input_mode = st.radio("輸入單位", ["價格", "盈虧 % (ROE)"], horizontal=True, key=f"d_mode_{i}")
-        
         c_t, c_s = st.columns(2)
         
         if input_mode == "價格":
             t_val = c_t.number_input("止盈價格", value=current_tp, key=f"d_t_p_{i}")
             s_val = c_s.number_input("止損價格", value=current_sl, key=f"d_s_p_{i}")
         else:
-            # ROE Mode logic
             def get_roe_val(price, default):
                 if price > 0: return calc_roe_from_price(pos['entry'], pos['lev'], pos['type'], price)
                 return default
-
             tp_roe_init = get_roe_val(current_tp, 30.0)
             sl_roe_init = get_roe_val(current_sl, -20.0)
             
             t_roe = c_t.number_input("止盈 %", value=float(f"{tp_roe_init:.2f}"), step=5.0, key=f"d_t_r_{i}")
             s_roe = c_s.number_input("止損 %", value=float(f"{sl_roe_init:.2f}"), step=5.0, key=f"d_s_r_{i}")
-            
             t_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], t_roe)
             s_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], s_roe)
             
@@ -176,6 +170,22 @@ show_zigzag = st.sidebar.checkbox("ZigZag", value=True)
 show_fvg = st.sidebar.checkbox("FVG 缺口", value=True)
 show_fib = st.sidebar.checkbox("Fib 止盈", value=True)
 show_orders = st.sidebar.checkbox("圖表掛單", value=True)
+
+# --- [新增] 錢包管理區 ---
+st.sidebar.markdown("---")
+with st.sidebar.expander("💰 錢包管理 (救援/重置)"):
+    st.caption(f"目前餘額: ${st.session_state.balance:,.2f}")
+    if st.button("🔄 重置為 10,000 U"):
+        st.session_state.balance = 10000.0
+        st.session_state.positions = []
+        st.session_state.pending_orders = []
+        st.session_state.history = []
+        save_data()
+        st.rerun()
+    if st.button("➕ 補血 (+10,000 U)"):
+        st.session_state.balance += 10000.0
+        save_data()
+        st.rerun()
 
 # --- Data Params ---
 def get_params(ui_selection):
@@ -333,7 +343,8 @@ if df is not None and not df.empty:
                 new_pos = st.session_state.pending_orders.pop(i)
                 new_pos['time'] = datetime.now().strftime('%m-%d %H:%M')
                 st.session_state.positions.append(new_pos)
-                st.toast(f"🔔 成交！{new_pos['symbol']}"); pending_updated = True
+                st.toast(f"🔔 成交！{new_pos['symbol']} @ {fmt_price(new_pos['entry'])}")
+                pending_updated = True
     if pending_updated: save_data()
 
     # Chart & Info
@@ -422,8 +433,16 @@ if df is not None and not df.empty:
         if "掛單" in order_type:
             entry_p = st.number_input("掛單價格", value=float(curr_price), format="%.6f")
         else: st.caption(f"市價約: {fmt_price(curr_price)}")
-            
-        amt = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0)
+        
+        # --- [新增] 快速本金按鈕 ---
+        st.write("快速選擇本金:")
+        c_p1, c_p2, c_p3, c_p4 = st.columns(4)
+        if c_p1.button("25%", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance * 0.25
+        if c_p2.button("50%", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance * 0.50
+        if c_p3.button("75%", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance * 0.75
+        if c_p4.button("Max", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance
+
+        amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_input), min_value=1.0, key="input_amt")
         
         with st.expander("止盈止損 (TP/SL)"):
             new_tp = st.number_input("止盈", 0.0)
@@ -496,7 +515,6 @@ if df is not None and not df.empty:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # 這裡觸發彈窗
                     if st.button("⚙️ 管理 (平倉/止盈損)", key=f"btn_manage_{i}", use_container_width=True):
                         manage_position_dialog(i, pos, live)
                     st.markdown("---")
