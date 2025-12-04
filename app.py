@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v91.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v91.0 帳戶淨值版)")
+st.set_page_config(page_title="全方位戰情室 AI (v92.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v92.0 四欄儀表板)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -222,7 +222,6 @@ def get_institutional_strategy(symbol, current_interval_ui):
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
     direction = "觀望"
     
-    # Action Message
     if final_score >= 2.0: 
         direction = "強力做多 (Strong Buy)"
         action_msg = "🤖 AI 建議：現在動能超強！別猶豫了，建議直接市價進場追擊！"
@@ -238,7 +237,6 @@ def get_institutional_strategy(symbol, current_interval_ui):
     else:
         action_msg = "🤖 AI 建議：現在多空不明，先喝杯咖啡觀望一下吧。"
 
-    # VWAP Message
     if is_above_vwap:
         vwap_msg = "🟢 大戶還在顧盤！價格在成本線之上，趨勢有支撐，安啦！"
         vwap_type = "success"
@@ -246,7 +244,6 @@ def get_institutional_strategy(symbol, current_interval_ui):
         vwap_msg = "⚠️ 主力好像棄守了...價格跌破成本線，小心被套！"
         vwap_type = "warning"
 
-    # Levels
     curr_price = last['Close']
     atr = last.get('ATR', curr_price * 0.02)
     recent_high = df['High'].tail(50).max()
@@ -412,7 +409,6 @@ if ai_res:
     curr_price = ai_res['last_price']
     df_chart = ai_res['df']
     
-    # Header
     c1, c2, c3 = st.columns([2, 1, 1])
     is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
     p_color = "#00C853" if is_up else "#FF3D00"
@@ -443,16 +439,15 @@ if ai_res:
                 total_u_pnl += pnl
                 total_margin_used += m
         except: pass
-    
-    # 帳戶權益 = 餘額 + 未結盈虧
-    equity = balance + total_u_pnl
     total_roe = (total_u_pnl / total_margin_used * 100) if total_margin_used > 0 else 0.0
+    equity = balance + total_u_pnl
 
-    m1, m2, m3 = st.columns(3)
-    # [修正] 顯示帳戶淨值 (Equity)
-    m1.metric("帳戶淨值 (Equity)", f"${equity:,.2f}", delta=f"{total_u_pnl:+.2f}")
+    # [改版] 四欄式佈局
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("帳戶淨值 (Equity)", f"${equity:,.2f}")
     m2.metric("錢包餘額 (Wallet)", f"${balance:,.2f}")
     m3.metric("可用餘額 (Available)", f"${available:,.2f}")
+    m4.metric("總未結盈虧 (PnL)", f"${total_u_pnl:+.2f}", delta=f"{total_roe:+.2f}%")
 
     st.divider()
 
@@ -484,14 +479,12 @@ if ai_res:
     # --- Chart ---
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
-    
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['VWAP'], line=dict(color='orange', width=2), name='VWAP'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1.5), name='EMA7 (短線)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Upper'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB上軌'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Lower'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB下軌'), row=1, col=1)
-    
     for pos in st.session_state.positions:
         if pos['symbol'] == symbol:
             fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
