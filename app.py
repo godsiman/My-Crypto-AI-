@@ -673,7 +673,7 @@ if df is not None and not df.empty:
                     st.session_state.balance -= amt
                     st.toast("⏳ 掛單已提交")
                 save_data()
-                st.experimental_rerun()
+                st.rerun()
 
     with tab_ord:
         if st.session_state.pending_orders:
@@ -766,3 +766,4 @@ if df is not None and not df.empty:
 
 else:
     st.error(f"❌ 無法讀取 {symbol}")
+
