@@ -11,10 +11,9 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
-# 手機版標題優化
-st.markdown("### 🏦 全方位戰情室 AI (v39.0 手機極致版)")
+st.markdown("### 🏦 全方位戰情室 AI (v40.0 完美戰情版)")
 
-# --- Persistence System (自動存檔) ---
+# --- Persistence System ---
 DATA_FILE = "trade_data.json"
 
 def save_data():
@@ -25,10 +24,8 @@ def save_data():
         "history": st.session_state.history
     }
     try:
-        with open(DATA_FILE, "w") as f:
-            json.dump(data, f)
-    except Exception as e:
-        st.error(f"存檔失敗: {e}")
+        with open(DATA_FILE, "w") as f: json.dump(data, f)
+    except Exception as e: st.error(f"存檔失敗: {e}")
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -39,8 +36,7 @@ def load_data():
                 st.session_state.positions = data.get("positions", [])
                 st.session_state.pending_orders = data.get("pending_orders", [])
                 st.session_state.history = data.get("history", [])
-        except Exception as e:
-            st.error(f"讀檔失敗: {e}")
+        except Exception as e: st.error(f"讀檔失敗: {e}")
     else:
         if 'balance' not in st.session_state: st.session_state.balance = 10000.0
         if 'positions' not in st.session_state: st.session_state.positions = []
@@ -74,9 +70,21 @@ def get_current_price(sym):
     except: return None
     return None
 
-# --- Sidebar UI: 僅保留設定，讓高度變短 ---
-st.sidebar.header("🎯 設定與篩選")
-st.sidebar.caption("這裡只放設定，方便手機關閉側欄")
+def calc_price_from_roe(entry, leverage, direction_str, roe_pct):
+    if entry == 0: return 0.0
+    direction = 1 if "Long" in direction_str or "做多" in direction_str else -1
+    try: return float(entry * (1 + (roe_pct / 100) / (leverage * direction)))
+    except: return 0.0
+
+def calc_roe_from_price(entry, leverage, direction_str, target_price):
+    if entry == 0: return 0.0
+    direction = 1 if "Long" in direction_str or "做多" in direction_str else -1
+    try: return float(((target_price - entry) / entry) * leverage * direction * 100)
+    except: return 0.0
+
+# --- Sidebar ---
+st.sidebar.header("🎯 設定")
+st.sidebar.caption("👇 點擊下方列表切換幣種")
 
 market = st.sidebar.radio("市場", ["加密貨幣", "美股", "台股"], index=0, key="market_radio")
 st.session_state.market = market
@@ -91,17 +99,17 @@ tw_stock_dict = {
 
 raw_symbol = "" 
 if market == "加密貨幣":
-    selected_item = st.sidebar.selectbox("🔥 常見幣種", crypto_list)
+    selected_item = st.sidebar.selectbox("快速選擇", crypto_list)
     raw_symbol = selected_item
 elif market == "美股":
-    selected_item = st.sidebar.selectbox("🇺🇸 常見美股", us_stock_list)
+    selected_item = st.sidebar.selectbox("快速選擇", us_stock_list)
     raw_symbol = selected_item
 else: 
     tw_display_list = list(tw_stock_dict.keys())
-    selected_item = st.sidebar.selectbox("🇹🇼 常見台股", tw_display_list)
+    selected_item = st.sidebar.selectbox("快速選擇", tw_display_list)
     raw_symbol = tw_stock_dict[selected_item]
 
-search_input = st.sidebar.text_input("🔍 搜尋代碼", placeholder="例如: 2330")
+search_input = st.sidebar.text_input("代碼搜尋", placeholder="例如: 2330")
 if search_input.strip(): raw_symbol = search_input.strip().upper()
 
 final_symbol = raw_symbol
@@ -111,19 +119,7 @@ elif market == "台股":
     if final_symbol.isdigit() or (len(final_symbol) == 4 and final_symbol.isdigit()): final_symbol += ".TW"
     elif not final_symbol.endswith(".TW") and not final_symbol.endswith(".TWO"): final_symbol += ".TW"
 
-# 這裡不直接強制覆蓋 session，而是當用戶操作時才更新，或者初始化
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = final_symbol
-# 如果用戶透過側邊欄改變了選擇，我們才更新圖表
-if search_input or selected_item:
-     # 簡單邏輯：如果 Sidebar 變動，更新全域 symbol (但點擊持倉切換時會覆蓋這個)
-     # 為了避免衝突，我們讓「持倉點擊」優先權更高
-     pass 
-
-# 讓 Sidebar 的選擇生效 (如果沒有點擊持倉按鈕的話)
-# 這裡做一個簡單處理：如果 session_state.chart_symbol 跟 Sidebar 算出來的不一樣，
-# 且不是因為剛點了按鈕，則 Sidebar 優先。但因為 Streamlit 運行機制，
-# 我們直接把 final_symbol 存入 session 供 chart 使用，除非點了持倉卡片。
-# 為了簡化，我們用按鈕觸發更新。
 if st.sidebar.button("🚀 載入 K 線"):
     st.session_state.chart_symbol = final_symbol
     st.rerun()
@@ -166,8 +162,7 @@ def get_data(symbol, period, interval):
         df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
         df['ATR'] = df['TR'].rolling(14).mean()
         return df.dropna(how='all')
-    except:
-        return None
+    except: return None
 
 # --- Indicators ---
 def calculate_zigzag(df, depth=12):
@@ -271,7 +266,7 @@ def generate_ai_report(symbol, price, score, struct, six, fvg, div, rsi_txt, buy
         else: report += f"\n🛒 空: **{entry_zone}** | 🎯 TP1: **{fmt_price(tp1)}** | 🛡️ SL: **{fmt_price(sell_sl)}**"
     return report
 
-# --- Position Close / Cancel ---
+# --- Actions ---
 def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=None):
     if pos_index >= len(st.session_state.positions): return
     pos = st.session_state.positions[pos_index]
@@ -303,35 +298,21 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
     else:
         st.session_state.positions[pos_index]['margin'] -= close_margin
         st.toast(f"✅ {pos['symbol']} 平 {percentage}%，入袋 {pnl_usdt:.2f} U")
-    
-    save_data()
-    st.rerun()
-
-def cancel_order(pos_index, order_type):
-    if pos_index < len(st.session_state.positions):
-        if order_type == 'TP':
-            st.session_state.positions[pos_index]['tp'] = 0.0
-        elif order_type == 'SL':
-            st.session_state.positions[pos_index]['sl'] = 0.0
-        st.toast(f"🗑️ 已撤銷 {order_type}")
-        save_data()
-        st.rerun()
+    save_data(); st.rerun()
 
 def cancel_pending_order(idx):
     if idx < len(st.session_state.pending_orders):
         ord = st.session_state.pending_orders.pop(idx)
         st.session_state.balance += ord['margin'] 
-        st.toast(f"🗑️ 已撤銷掛單")
-        save_data()
-        st.rerun()
+        st.toast(f"🗑️ 已撤銷掛單"); save_data(); st.rerun()
 
-# --- Main Page Start ---
+# --- Main Page ---
 df = get_data(symbol, period, interval)
 
 if df is not None and not df.empty:
     last = df.iloc[-1]; curr_price = float(last['Close'])
 
-    # --- Pending Orders Logic ---
+    # Pending Order Logic
     pending_updated = False
     if st.session_state.pending_orders:
         for i in reversed(range(len(st.session_state.pending_orders))):
@@ -339,7 +320,6 @@ if df is not None and not df.empty:
             is_filled = False
             if ord['type'] == 'Long' and curr_price <= ord['entry']: is_filled = True
             elif ord['type'] == 'Short' and curr_price >= ord['entry']: is_filled = True
-            
             if is_filled:
                 new_pos = st.session_state.pending_orders.pop(i)
                 new_pos['time'] = datetime.now().strftime('%m-%d %H:%M')
@@ -348,7 +328,7 @@ if df is not None and not df.empty:
                 pending_updated = True
     if pending_updated: save_data()
 
-    # --- Analysis & Chart (Top) ---
+    # Chart & Info
     pivots = calculate_zigzag(df)
     bull_fvg, bear_fvg = calculate_fvg(df)
     bull_div, bear_div = detect_div(df)
@@ -378,10 +358,8 @@ if df is not None and not df.empty:
             if last['Close'] <= tp1: tp1 = lh - diff * 1.272; risk_warning = "創低，止盈下移"
             elif last['Close'] > sell_sl: risk_warning = "❌ 結構破壞"; score = 0
 
-    # 1. AI 建議文字
     st.info(generate_ai_report(symbol, last['Close'], score, struct_t, six_t, fvg_t, div_t, rsi_t, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning))
 
-    # 2. 圖表
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7,0.3])
     fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name='價格', line=dict(color='white', width=2)), row=1, col=1)
     if show_six:
@@ -410,10 +388,9 @@ if df is not None and not df.empty:
     fig.update_layout(title=f"{symbol} 走勢", template="plotly_dark", height=500, margin=dict(l=10, r=10, t=40, b=10))
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Trading Panel Area (移到主頁下方) ---
+    # --- Trading Panel ---
     st.divider()
     
-    # 錢包摘要
     total_unrealized = 0
     if st.session_state.positions:
         for pos in st.session_state.positions:
@@ -426,10 +403,9 @@ if df is not None and not df.empty:
     col_w1.metric("💰 總資產", f"${st.session_state.balance:,.2f}")
     col_w2.metric("🔥 未結盈虧", f"${total_unrealized:+.2f} U", delta_color="normal")
 
-    # 分頁功能區
     tab_trade, tab_pos, tab_ord, tab_hist = st.tabs(["🚀 下單", "🔥 持倉列表", "📋 委託單", "📜 歷史"])
     
-    # --- Tab 1: 下單 ---
+    # --- Tab 1: Trade ---
     with tab_trade:
         order_type = st.radio("類型", ["⚡ 市價", "⏱️ 掛單"], horizontal=True, label_visibility="collapsed")
         c1, c2 = st.columns(2)
@@ -439,8 +415,7 @@ if df is not None and not df.empty:
         entry_p = curr_price
         if "掛單" in order_type:
             entry_p = st.number_input("掛單價格", value=float(curr_price), format="%.6f")
-        else:
-            st.caption(f"市價約: {fmt_price(curr_price)}")
+        else: st.caption(f"市價約: {fmt_price(curr_price)}")
             
         amt = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0)
         
@@ -466,10 +441,9 @@ if df is not None and not df.empty:
                     st.session_state.pending_orders.append(new_ord)
                     st.session_state.balance -= amt
                     st.toast("⏳ 掛單已提交")
-                save_data()
-                st.rerun()
+                save_data(); st.rerun()
 
-    # --- Tab 2: 持倉 (黑底卡片風格回歸 + 點擊切換圖表) ---
+    # --- Tab 2: Positions (Enhanced with ROE mode) ---
     with tab_pos:
         if not st.session_state.positions: st.info("無持倉")
         else:
@@ -480,7 +454,7 @@ if df is not None and not df.empty:
                     u_pnl = pos['margin'] * (((live - pos['entry']) / pos['entry']) * pos['lev'] * d)
                     pnl_pct = (((live - pos['entry']) / pos['entry']) * pos['lev'] * d) * 100
                     
-                    # 檢查爆倉/TP/SL
+                    # Triggers
                     trig = None; r_ratio = 100
                     liq = pos['entry']*(1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry']*(1 + 1/pos['lev'])
                     if (pos['type']=='Long' and live<=liq) or (pos['type']=='Short' and live>=liq): trig="💀 爆倉"
@@ -491,15 +465,12 @@ if df is not None and not df.empty:
                     
                     if trig: close_position(i, r_ratio, trig, live); break
 
-                    # 1. 標題與分析按鈕
+                    # Card
                     col_h1, col_h2 = st.columns([3, 1])
                     col_h1.markdown(f"**#{i+1} {pos['symbol']}**")
-                    # 點擊這裡切換上方圖表
                     if col_h2.button(f"🔍 分析", key=f"ana_{i}"):
-                        st.session_state.chart_symbol = pos['symbol']
-                        st.rerun()
+                        st.session_state.chart_symbol = pos['symbol']; st.rerun()
 
-                    # 2. 黑底卡片 (HTML Style)
                     clr = "#00C853" if u_pnl >= 0 else "#FF3D00"
                     icon = "🟢" if pos['type'] == 'Long' else "🔴"
                     st.markdown(f"""
@@ -525,26 +496,50 @@ if df is not None and not df.empty:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # 3. 平倉與操作
                     with st.expander("⚡ 操作 (平倉/止盈損)"):
-                        st.write("選擇平倉比例:")
+                        st.write("平倉比例:")
                         ratio = st.radio("Ratio", [25,50,75,100], 3, horizontal=True, key=f"r_{i}", label_visibility="collapsed", format_func=lambda x:f"{x}%")
                         if st.button("確認平倉", key=f"c_{i}", use_container_width=True):
                             close_position(i, ratio, "手動", live)
                         
                         st.divider()
                         st.write("修改止盈止損:")
+                        
+                        # --- [重點更新] 支援 ROE% 輸入 ---
+                        input_mode = st.radio("輸入單位", ["價格", "盈虧 % (ROE)"], horizontal=True, key=f"mode_{i}")
                         c_t, c_s = st.columns(2)
-                        t_p = c_t.number_input("TP", value=float(pos.get('tp',0)), key=f"t_{i}")
-                        s_l = c_s.number_input("SL", value=float(pos.get('sl',0)), key=f"s_{i}")
+                        
+                        current_tp = float(pos.get('tp', 0))
+                        current_sl = float(pos.get('sl', 0))
+                        
+                        if input_mode == "價格":
+                            t_val = c_t.number_input("止盈價格", value=current_tp, key=f"t_p_{i}")
+                            s_val = c_s.number_input("止損價格", value=current_sl, key=f"s_p_{i}")
+                        else:
+                            # ROE Mode logic
+                            def get_roe_val(price, default):
+                                if price > 0: return calc_roe_from_price(pos['entry'], pos['lev'], pos['type'], price)
+                                return default
+
+                            tp_roe_init = get_roe_val(current_tp, 30.0)
+                            sl_roe_init = get_roe_val(current_sl, -20.0)
+                            
+                            t_roe = c_t.number_input("止盈 %", value=float(f"{tp_roe_init:.2f}"), step=5.0, key=f"t_r_{i}")
+                            s_roe = c_s.number_input("止損 %", value=float(f"{sl_roe_init:.2f}"), step=5.0, key=f"s_r_{i}")
+                            
+                            t_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], t_roe)
+                            s_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], s_roe)
+                            
+                            c_t.caption(f"≈ {fmt_price(t_val)}")
+                            c_s.caption(f"≈ {fmt_price(s_val)}")
+
                         if st.button("更新策略", key=f"u_{i}", use_container_width=True):
-                            st.session_state.positions[i]['tp'] = t_p
-                            st.session_state.positions[i]['sl'] = s_l
+                            st.session_state.positions[i]['tp'] = t_val
+                            st.session_state.positions[i]['sl'] = s_val
                             st.toast("策略已更新"); save_data(); st.rerun()
-                    
                     st.markdown("---")
 
-    # --- Tab 3: 委託單 ---
+    # --- Tab 3: Orders ---
     with tab_ord:
         if st.session_state.pending_orders:
             st.caption("⏳ 掛單中")
@@ -552,10 +547,9 @@ if df is not None and not df.empty:
                 c1, c2 = st.columns([3, 1])
                 c1.write(f"**{ord['symbol']}** {ord['type']} @ {fmt_price(ord['entry'])}")
                 if c2.button("撤銷", key=f"cx_{i}"): cancel_pending_order(i)
-        else:
-            st.info("無掛單")
+        else: st.info("無掛單")
     
-    # --- Tab 4: 歷史 ---
+    # --- Tab 4: History ---
     with tab_hist:
         if st.session_state.history:
             st.dataframe(pd.DataFrame(st.session_state.history[::-1]), hide_index=True)
