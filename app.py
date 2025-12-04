@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v87.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v87.0 短線攻擊版)")
+st.set_page_config(page_title="全方位戰情室 AI (v87.1)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v87.1 永久存檔版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -20,8 +20,8 @@ class NpEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray): return obj.tolist()
         return super(NpEncoder, self).default(obj)
 
-# --- Persistence ---
-DATA_FILE = "trade_data_v87.json"
+# --- Persistence (固定檔名，防止更新後紀錄消失) ---
+DATA_FILE = "trade_data_live.json"
 
 def save_data():
     data = {
@@ -37,6 +37,7 @@ def save_data():
         st.error(f"存檔失敗: {e}")
 
 def load_data():
+    # 初始化 Session State
     if 'init_done' not in st.session_state:
         st.session_state.balance = 10000.0
         st.session_state.positions = []
@@ -48,6 +49,7 @@ def load_data():
         st.session_state.symbol_input = "" 
         st.session_state.init_done = True
 
+    # 嘗試讀取檔案
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -57,7 +59,8 @@ def load_data():
                 st.session_state.pending_orders = data.get("pending_orders", [])
                 st.session_state.history = data.get("history", [])
         except:
-            st.session_state.balance = 10000.0
+            # 讀取失敗時保持預設值 (不重置，避免覆蓋錯誤)
+            pass
 
 load_data()
 
@@ -94,9 +97,8 @@ def calculate_indicators(df):
     if df is None or df.empty: return df
     df = df.copy()
     
-    # [新增] EMA7 短線攻擊線
+    # EMA7 (短線攻擊)
     df['EMA7'] = df['Close'].ewm(span=7).mean()
-    
     # 均線
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA60'] = df['Close'].ewm(span=60).mean()
@@ -184,7 +186,7 @@ def get_hybrid_strategy(symbol, current_interval_ui):
     micro_score = 0
     signals = []
     
-    # [新增] 短線攻擊訊號 (Price vs EMA7)
+    # EMA7 短線攻擊
     if last['Close'] > last['EMA7']:
         signals.append("⚡ 站上短線 (EMA7) - 攻擊態勢")
         micro_score += 1.5
@@ -490,7 +492,6 @@ if ai_res:
             
             with st.expander("進階 (止盈止損)", expanded=True):
                 mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
-                # 自動填入建議
                 rec_tp = ai_res['tp']
                 rec_sl = ai_res['sl']
                 
