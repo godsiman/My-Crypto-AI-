@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v49.0 全能戰情版)")
+st.markdown("### 🏦 全方位戰情室 AI (v50.0 完整資訊版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -86,6 +86,7 @@ def calc_roe_from_price(entry, leverage, direction_str, target_price):
 @st.dialog("⚡ 倉位管理", width="small")
 def manage_position_dialog(i, pos, current_price):
     st.markdown(f"**{pos['symbol']}** ({pos['type']} x{pos['lev']})")
+    st.caption(f"本金: {pos['margin']} U") # 這裡也顯示本金
     st.caption(f"開倉價: {fmt_price(pos['entry'])} | 現價: {fmt_price(current_price)}")
     
     tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
@@ -173,7 +174,7 @@ interval_ui = st.sidebar.radio("週期", ["15分鐘", "1小時", "4小時", "日
 # 視覺化開關
 show_six = st.sidebar.checkbox("EMA 均線", value=True)
 show_bb = st.sidebar.checkbox("布林通道", value=False) 
-show_zigzag = st.sidebar.checkbox("SMC 結構 (ZigZag)", value=True) # 預設開啟
+show_zigzag = st.sidebar.checkbox("SMC 結構 (ZigZag)", value=True)
 show_fvg = st.sidebar.checkbox("SMC 缺口 (FVG)", value=True)
 show_fib = st.sidebar.checkbox("Fib (止盈)", value=True)
 show_orders = st.sidebar.checkbox("圖表掛單", value=True)
@@ -250,21 +251,12 @@ def calculate_zigzag(df, depth=12):
     try:
         df = df.copy(); df['max_roll'] = df['High'].rolling(depth, center=True).max(); df['min_roll'] = df['Low'].rolling(depth, center=True).min()
         pivots = []
-        last_pivot = None
         for i in range(len(df)):
-            idx = df.index[i]
             if not np.isnan(df['max_roll'].iloc[i]) and df['High'].iloc[i] == df['max_roll'].iloc[i]:
-                if last_pivot is None or last_pivot['type']=='low':
-                    pivots.append({'idx': idx, 'val': float(df['High'].iloc[i]), 'type': 'high'}); last_pivot=pivots[-1]
-                elif last_pivot['type']=='high' and df['High'].iloc[i] > last_pivot['val']:
-                    pivots[-1] = {'idx': idx, 'val': float(df['High'].iloc[i]), 'type': 'high'}
+                pivots.append({'idx': df.index[i], 'val': float(df['High'].iloc[i]), 'type': 'high'})
             elif not np.isnan(df['min_roll'].iloc[i]) and df['Low'].iloc[i] == df['min_roll'].iloc[i]:
-                if last_pivot is None or last_pivot['type']=='high':
-                    pivots.append({'idx': idx, 'val': float(df['Low'].iloc[i]), 'type': 'low'}); last_pivot=pivots[-1]
-                elif last_pivot['type']=='low' and df['Low'].iloc[i] < last_pivot['val']:
-                    pivots[-1] = {'idx': idx, 'val': float(df['Low'].iloc[i]), 'type': 'low'}
+                pivots.append({'idx': df.index[i], 'val': float(df['Low'].iloc[i]), 'type': 'low'})
         
-        # Add Label (HH/LL)
         if len(pivots) >= 2:
             for i in range(2, len(pivots)):
                 curr = pivots[i]; prev = pivots[i-2]
@@ -448,7 +440,6 @@ if df is not None and not df.empty:
     if show_zigzag and pivots:
         px = [p['idx'] for p in pivots]; py = [p['val'] for p in pivots]
         fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=2), marker_size=4), row=1, col=1)
-        # SMC: Add Labels (HH/LL)
         for p in pivots[-10:]: 
             if 'label' in p:
                 label_clr = '#00FF00' if 'H' in p['label'] and p['type'] == 'high' else 'red'
@@ -485,22 +476,21 @@ if df is not None and not df.empty:
         fig.add_trace(go.Scatter(x=gc_data.index, y=gc_data['MACD'], mode='markers', name='金叉', marker=dict(symbol='triangle-up', color='#00FF00', size=10)), row=3, col=1)
         fig.add_trace(go.Scatter(x=dc_data.index, y=dc_data['MACD'], mode='markers', name='死叉', marker=dict(symbol='triangle-down', color='#FF0000', size=10)), row=3, col=1)
 
-    # --- [關鍵修復] 啟用圖表工具列 (displayModeBar=True) + 預設平移 (dragmode='pan') ---
+    # Chart Config
     fig.update_layout(
         template="plotly_dark", 
         height=700, 
         margin=dict(l=10, r=10, t=10, b=10), 
         showlegend=False,
-        dragmode='pan' # 預設手指滑動為「移動」
+        dragmode='pan'
     )
     fig.update_xaxes(rangeslider_visible=False)
     
-    # config: displayModeBar=True 把工具列叫回來
     st.plotly_chart(fig, use_container_width=True, config={
         'scrollZoom': True, 
         'displayModeBar': True,
         'displaylogo': False,
-        'modeBarButtonsToRemove': ['lasso2d', 'select2d'] # 移除不常用的選取工具，保持清爽
+        'modeBarButtonsToRemove': ['lasso2d', 'select2d']
     })
 
     # --- Panel ---
@@ -517,7 +507,7 @@ if df is not None and not df.empty:
     col_w1.metric("💰 總資產", f"${st.session_state.balance:,.2f}")
     col_w2.metric("🔥 未結盈虧", f"${total_unrealized:+.2f} U", delta_color="normal")
 
-    tab_trade, tab_pos, tab_ord, tab_hist = st.tabs(["🚀 下單", "🔥 持倉列表", "📋 委託單", "📜 歷史"])
+    tab_trade, tab_ord, tab_hist = st.tabs(["🚀 下單", "📋 委託單", "📜 歷史"])
     
     with tab_trade:
         order_type = st.radio("類型", ["⚡ 市價", "⏱️ 掛單"], horizontal=True, label_visibility="collapsed")
@@ -562,56 +552,6 @@ if df is not None and not df.empty:
                     st.toast("⏳ 掛單已提交")
                 save_data(); st.rerun()
 
-    with tab_pos:
-        if not st.session_state.positions: st.info("無持倉")
-        else:
-            for i, pos in enumerate(st.session_state.positions):
-                live = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
-                if live:
-                    d = 1 if pos['type'] == 'Long' else -1
-                    u_pnl = pos['margin'] * (((live - pos['entry']) / pos['entry']) * pos['lev'] * d)
-                    pnl_pct = (((live - pos['entry']) / pos['entry']) * pos['lev'] * d) * 100
-                    
-                    trig = None; r_ratio = 100
-                    liq = pos['entry']*(1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry']*(1 + 1/pos['lev'])
-                    if (pos['type']=='Long' and live<=liq) or (pos['type']=='Short' and live>=liq): trig="💀 爆倉"
-                    elif pos.get('tp',0)>0 and ((pos['type']=='Long' and live>=pos['tp']) or (pos['type']=='Short' and live<=pos['tp'])): trig="🎯 止盈"; st.session_state.positions[i]['tp']=0
-                    elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live<=pos['sl']) or (pos['type']=='Short' and live>=pos['sl'])): trig="🛡️ 止損"; st.session_state.positions[i]['sl']=0
-                    if trig: close_position(i, r_ratio, trig, live); st.rerun()
-
-                    col_h1, col_h2 = st.columns([3, 1])
-                    col_h1.markdown(f"**#{i+1} {pos['symbol']}**")
-                    if col_h2.button(f"🔍 分析", key=f"ana_{i}"): st.session_state.chart_symbol = pos['symbol']; st.rerun()
-
-                    clr = "#00C853" if u_pnl >= 0 else "#FF3D00"
-                    icon = "🟢" if pos['type'] == 'Long' else "🔴"
-                    st.markdown(f"""
-                    <div style="background-color: #262730; padding: 12px; border-radius: 8px; border-left: 5px solid {clr}; margin-bottom: 8px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #ccc;">
-                            <span>{icon} {pos['type']} x{pos['lev']}</span>
-                            <span>🕒 {pos.get('time','--')}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 5px;">
-                            <div>
-                                <div style="font-size: 12px; color: #aaa;">未結盈虧 (U)</div>
-                                <div style="font-size: 18px; font-weight: bold; color: {clr};">{u_pnl:+.2f} U</div>
-                            </div>
-                            <div style="text-align: right;">
-                                <div style="font-size: 12px; color: #aaa;">回報率 (%)</div>
-                                <div style="font-size: 18px; font-weight: bold; color: {clr};">{pnl_pct:+.2f}%</div>
-                            </div>
-                        </div>
-                        <div style="margin-top: 8px; font-size: 12px; color: #888; display: flex; justify-content: space-between;">
-                            <span>開: {fmt_price(pos['entry'])}</span>
-                            <span>現: {fmt_price(live)}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button("⚙️ 管理 (平倉/止盈損)", key=f"btn_manage_{i}", use_container_width=True):
-                        manage_position_dialog(i, pos, live)
-                    st.markdown("---")
-
     with tab_ord:
         if st.session_state.pending_orders:
             st.caption("⏳ 掛單中")
@@ -624,5 +564,59 @@ if df is not None and not df.empty:
     with tab_hist:
         if st.session_state.history: st.dataframe(pd.DataFrame(st.session_state.history[::-1]), hide_index=True)
         else: st.info("無紀錄")
+
+    # --- Position List ---
+    st.markdown("### 🔥 持倉列表")
+    if not st.session_state.positions:
+        st.info("目前無持倉，請先下單")
+    else:
+        for i, pos in enumerate(st.session_state.positions):
+            live = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
+            if live:
+                d = 1 if pos['type'] == 'Long' else -1
+                u_pnl = pos['margin'] * (((live - pos['entry']) / pos['entry']) * pos['lev'] * d)
+                pnl_pct = (((live - pos['entry']) / pos['entry']) * pos['lev'] * d) * 100
+                
+                trig = None; r_ratio = 100
+                liq = pos['entry']*(1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry']*(1 + 1/pos['lev'])
+                if (pos['type']=='Long' and live<=liq) or (pos['type']=='Short' and live>=liq): trig="💀 爆倉"
+                elif pos.get('tp',0)>0 and ((pos['type']=='Long' and live>=pos['tp']) or (pos['type']=='Short' and live<=pos['tp'])): trig="🎯 止盈"; st.session_state.positions[i]['tp']=0
+                elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live<=pos['sl']) or (pos['type']=='Short' and live>=pos['sl'])): trig="🛡️ 止損"; st.session_state.positions[i]['sl']=0
+                if trig: close_position(i, r_ratio, trig, live); st.rerun()
+
+                col_h1, col_h2 = st.columns([4, 1])
+                col_h1.markdown(f"**#{i+1} {pos['symbol']}**")
+                if col_h2.button(f"🔍", key=f"jump_{i}"):
+                    st.session_state.chart_symbol = pos['symbol']
+                    st.rerun()
+
+                clr = "#00C853" if u_pnl >= 0 else "#FF3D00"
+                icon = "🟢" if pos['type'] == 'Long' else "🔴"
+                st.markdown(f"""
+                <div style="background-color: #262730; padding: 12px; border-radius: 8px; border-left: 5px solid {clr}; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 13px; color: #ccc;">
+                        <span>{icon} {pos['type']} x{pos['lev']} (本金: {pos['margin']:.0f} U)</span>
+                        <span>🕒 {pos.get('time','--')}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 5px;">
+                        <div>
+                            <div style="font-size: 12px; color: #aaa;">未結盈虧 (U)</div>
+                            <div style="font-size: 18px; font-weight: bold; color: {clr};">{u_pnl:+.2f} U</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 12px; color: #aaa;">回報率 (%)</div>
+                            <div style="font-size: 18px; font-weight: bold; color: {clr};">{pnl_pct:+.2f}%</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 12px; color: #888; display: flex; justify-content: space-between;">
+                        <span>開: {fmt_price(pos['entry'])}</span>
+                        <span>現: {fmt_price(live)}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("⚙️ 管理 / 平倉", key=f"m_{i}", use_container_width=True):
+                    manage_position_dialog(i, pos, live)
+                st.markdown("---")
 
 else: st.error(f"❌ 無法讀取 {symbol}")
