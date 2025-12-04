@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v46.0 SMC 機構操盤版)")
+st.markdown("### 🏦 全方位戰情室 AI (v48.0 圖表操控優化版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -101,6 +101,7 @@ def manage_position_dialog(i, pos, current_price):
         current_tp = float(pos.get('tp', 0))
         current_sl = float(pos.get('sl', 0))
         input_mode = st.radio("輸入單位", ["價格", "盈虧 % (ROE)"], horizontal=True, key=f"d_mode_{i}")
+        
         c_t, c_s = st.columns(2)
         
         if input_mode == "價格":
@@ -110,16 +111,21 @@ def manage_position_dialog(i, pos, current_price):
             def get_roe_val(price, default):
                 if price > 0: return calc_roe_from_price(pos['entry'], pos['lev'], pos['type'], price)
                 return default
+
             tp_roe_init = get_roe_val(current_tp, 30.0)
             sl_roe_init = get_roe_val(current_sl, -20.0)
             
-            t_roe = c_t.number_input("止盈 %", value=float(f"{tp_roe_init:.2f}"), step=5.0, key=f"d_t_r_{i}")
-            s_roe = c_s.number_input("止損 %", value=float(f"{sl_roe_init:.2f}"), step=5.0, key=f"d_s_r_{i}")
+            st.write("---")
+            st.caption("👇 拖動滑桿快速設定")
+            t_roe = st.slider("止盈 %", min_value=0.0, max_value=500.0, value=float(f"{max(0.0, tp_roe_init):.2f}"), step=5.0, key=f"d_t_s_{i}")
+            s_roe = st.slider("止損 %", min_value=-100.0, max_value=0.0, value=float(f"{min(0.0, sl_roe_init):.2f}"), step=5.0, key=f"d_s_s_{i}")
+            
             t_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], t_roe)
             s_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], s_roe)
             
-            if t_val > 0: c_t.caption(f"≈ {fmt_price(t_val)}")
-            if s_val > 0: c_s.caption(f"≈ {fmt_price(s_val)}")
+            col_info1, col_info2 = st.columns(2)
+            if t_val > 0: col_info1.success(f"TP: {fmt_price(t_val)}")
+            if s_val > 0: col_info2.error(f"SL: {fmt_price(s_val)}")
 
         if st.button("更新策略", key=f"d_u_{i}", use_container_width=True):
             st.session_state.positions[i]['tp'] = t_val
@@ -167,8 +173,9 @@ interval_ui = st.sidebar.radio("週期", ["15分鐘", "1小時", "4小時", "日
 # 視覺化開關
 show_six = st.sidebar.checkbox("EMA 均線", value=True)
 show_bb = st.sidebar.checkbox("布林通道", value=False) 
-show_smc = st.sidebar.checkbox("SMC (聰明錢/結構)", value=True) # 新增 SMC
-show_div = st.sidebar.checkbox("RSI 背離 (超買賣)", value=True) # 增強版背離
+show_zigzag = st.sidebar.checkbox("ZigZag (結構)", value=False)
+show_fvg = st.sidebar.checkbox("FVG (缺口)", value=False)
+show_fib = st.sidebar.checkbox("Fib (止盈)", value=True)
 show_orders = st.sidebar.checkbox("圖表掛單", value=True)
 
 # --- 錢包管理 ---
@@ -238,103 +245,49 @@ def get_data(symbol, period, interval):
         return df.dropna(how='all')
     except: return None
 
-# --- Advanced SMC & ZigZag Logic ---
-def calculate_smc(df, depth=12):
+# --- Logic ---
+def calculate_zigzag(df, depth=12):
     try:
-        df = df.copy()
-        # 1. Identify Pivots (High/Low)
-        df['max_roll'] = df['High'].rolling(depth, center=True).max()
-        df['min_roll'] = df['Low'].rolling(depth, center=True).min()
-        
+        df = df.copy(); df['max_roll'] = df['High'].rolling(depth, center=True).max(); df['min_roll'] = df['Low'].rolling(depth, center=True).min()
         pivots = []
-        last_pivot = None # {'type': 'high'/'low', 'val': float, 'idx': datetime}
-        
         for i in range(len(df)):
-            curr_idx = df.index[i]
-            # Found Swing High
             if not np.isnan(df['max_roll'].iloc[i]) and df['High'].iloc[i] == df['max_roll'].iloc[i]:
-                if last_pivot is None or last_pivot['type'] == 'low':
-                    pivots.append({'idx': curr_idx, 'val': float(df['High'].iloc[i]), 'type': 'high'})
-                    last_pivot = pivots[-1]
-                elif last_pivot['type'] == 'high' and df['High'].iloc[i] > last_pivot['val']:
-                    # Update Higher High in same sequence
-                    pivots[-1] = {'idx': curr_idx, 'val': float(df['High'].iloc[i]), 'type': 'high'}
-                    last_pivot = pivots[-1]
-            
-            # Found Swing Low
+                pivots.append({'idx': df.index[i], 'val': float(df['High'].iloc[i]), 'type': 'high'})
             elif not np.isnan(df['min_roll'].iloc[i]) and df['Low'].iloc[i] == df['min_roll'].iloc[i]:
-                if last_pivot is None or last_pivot['type'] == 'high':
-                    pivots.append({'idx': curr_idx, 'val': float(df['Low'].iloc[i]), 'type': 'low'})
-                    last_pivot = pivots[-1]
-                elif last_pivot['type'] == 'low' and df['Low'].iloc[i] < last_pivot['val']:
-                    # Update Lower Low in same sequence
-                    pivots[-1] = {'idx': curr_idx, 'val': float(df['Low'].iloc[i]), 'type': 'low'}
-                    last_pivot = pivots[-1]
+                pivots.append({'idx': df.index[i], 'val': float(df['Low'].iloc[i]), 'type': 'low'})
+        return pivots
+    except: return []
 
-        # 2. Identify Structure (HH, LL, LH, HL) and BOS/ChoCH
-        structure = [] # List of labels
-        if len(pivots) >= 2:
-            # Init first 2 points
-            pass 
-        
-        # Simple Logic for visualization labels
-        for i in range(2, len(pivots)):
-            curr = pivots[i]
-            prev_same = pivots[i-2] # previous High if curr is High
-            
-            label = ""
-            if curr['type'] == 'high':
-                if curr['val'] > prev_same['val']: label = "HH" # Higher High
-                else: label = "LH" # Lower High
-            else: # low
-                if curr['val'] < prev_same['val']: label = "LL" # Lower Low
-                else: label = "HL" # Higher Low
-            curr['label'] = label
-
-        # 3. Identify Order Blocks (Simplified)
-        # Bullish OB: The last Red candle before a strong move up that broke structure (or just a strong move)
-        # Bearish OB: The last Green candle before a strong move down
-        obs = []
-        # Look for recent pivots
-        recent_pivots = pivots[-6:] # analyze last few moves
-        for p in recent_pivots:
-            # Find the index integer location
-            try:
-                loc = df.index.get_loc(p['idx'])
-                if p['type'] == 'low': # Potential Bullish OB at this bottom
-                    # Check if price moved up significantly after
-                    # Simplified: Just mark the candle at Swing Low as OB
-                    ob_candle = df.iloc[loc]
-                    obs.append({'type': 'bull', 'top': ob_candle['High'], 'bottom': ob_candle['Low'], 'start': p['idx']})
-                elif p['type'] == 'high': # Potential Bearish OB
-                    ob_candle = df.iloc[loc]
-                    obs.append({'type': 'bear', 'top': ob_candle['High'], 'bottom': ob_candle['Low'], 'start': p['idx']})
-            except: pass
-
-        return pivots, obs
+def calculate_fvg(df):
+    try:
+        bull, bear = [], []
+        h, l, c = df['High'].values, df['Low'].values, df['Close'].values
+        for i in range(max(2, len(df)-300), len(df)):
+            if l[i] > h[i-2] and c[i-1] > h[i-2]: bull.append({'start': df.index[i-2], 'top': float(l[i]), 'bottom': float(h[i-2]), 'active': True})
+            if h[i] < l[i-2] and c[i-1] < l[i-2]: bear.append({'start': df.index[i-2], 'top': float(l[i-2]), 'bottom': float(h[i]), 'active': True})
+        return bull, bear
     except: return [], []
 
-def detect_enhanced_div(df):
+def detect_div(df):
     try:
         rsi = df['RSI'].values; close = df['Close'].values; 
         highs = argrelextrema(rsi, np.greater, order=5)[0]; lows = argrelextrema(rsi, np.less, order=5)[0]
         bull, bear = [], []
-        # Enhanced: Only detecting Divergence when RSI is in extreme zones
         for i in range(len(lows)-1):
-            if close[lows[i+1]] < close[lows[i]] and rsi[lows[i+1]] > rsi[lows[i]] and rsi[lows[i+1]] < 35: # Oversold area
-                bull.append(df.index[lows[i+1]])
+            if close[lows[i+1]] < close[lows[i]] and rsi[lows[i+1]] > rsi[lows[i]]: bull.append(df.index[lows[i+1]])
         for i in range(len(highs)-1):
-            if close[highs[i+1]] > close[highs[i]] and rsi[highs[i+1]] < rsi[highs[i]] and rsi[highs[i+1]] > 65: # Overbought area
-                bear.append(df.index[highs[i+1]])
+            if close[highs[i+1]] > close[highs[i]] and rsi[highs[i+1]] < rsi[highs[i]]: bear.append(df.index[highs[i+1]])
         return bull, bear
     except: return [], []
 
-def calculate_score_v17(pivots, last, df, smc_obs, bull_div, bear_div):
+def calculate_score_v17(pivots, last, df, bull_fvg, bear_fvg, bull_div, bear_div):
     score = 0; struct_txt = "盤整"
     try:
         if len(pivots) >= 4:
-            if pivots[-1]['label'] == 'HH' or pivots[-1]['label'] == 'HL': score += 3; struct_txt="多頭結構"
-            elif pivots[-1]['label'] == 'LL' or pivots[-1]['label'] == 'LH': score -= 3; struct_txt="空頭結構"
+            vh = [p['val'] for p in pivots if p['type']=='high']; vl = [p['val'] for p in pivots if p['type']=='low']
+            if len(vh) >= 2 and len(vl) >= 2:
+                if vh[-1] > vh[-2] and vl[-1] > vl[-2]: score += 3; struct_txt="多頭 (+3)"
+                elif vh[-1] < vh[-2] and vl[-1] < vl[-2]: score -= 3; struct_txt="空頭 (-3)"
     except: pass
     
     ema20, ema60, ema120 = last.get('EMA20', np.nan), last.get('EMA60', np.nan), last.get('EMA120', np.nan)
@@ -342,23 +295,18 @@ def calculate_score_v17(pivots, last, df, smc_obs, bull_div, bear_div):
     if last['Close'] > ema20 > ema60 > ema120: score += 2; six_txt="順勢多 (+2)"
     elif last['Close'] < ema20 < ema60 < ema120: score -= 2; six_txt="順勢空 (-2)"
     
-    ob_txt = "無"
-    if smc_obs:
-        last_ob = smc_obs[-1]
-        if last_ob['type'] == 'bull' and last['Close'] > last_ob['top']: score +=1; ob_txt="支撐上方"
-        elif last_ob['type'] == 'bear' and last['Close'] < last_ob['bottom']: score -=1; ob_txt="壓力下方"
-
+    fvg_txt = "無"
+    try:
+        if bull_fvg and (last['Close'] - bull_fvg[-1]['top']) / last['Close'] < 0.02: score += 2; fvg_txt="支撐"
+    except: pass
+    
     rsi_txt = "中性"
     if last['RSI'] < 30: score += 1; rsi_txt="超賣"
     elif last['RSI'] > 70: score -= 1; rsi_txt="超買"
     
-    # Divergence Score
-    if bull_div and (df.index[-1] - bull_div[-1]).days < 2: score += 2
-    if bear_div and (df.index[-1] - bear_div[-1]).days < 2: score -= 2
+    return score, struct_txt, six_txt, fvg_txt, "無", rsi_txt
 
-    return score, struct_txt, six_txt, ob_txt, "無", rsi_txt
-
-def generate_ai_report(symbol, price, score, struct, six, ob, div, rsi_txt, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning):
+def generate_ai_report(symbol, price, score, struct, six, fvg, div, rsi_txt, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning):
     report = f"**{symbol}** 現價 **{fmt_price(price)}** | "
     abs_score = abs(score)
     direction = "做多" if score > 0 else "做空"
@@ -427,25 +375,36 @@ if df is not None and not df.empty:
     if pending_updated: save_data()
 
     # Chart & Info
-    pivots, smc_obs = calculate_smc(df) # New SMC Function
-    bull_div, bear_div = detect_enhanced_div(df) # New Div Function
-    score, struct_t, six_t, ob_t, div_t, rsi_t = calculate_score_v17(pivots, last, df, smc_obs, bull_div, bear_div)
+    pivots = calculate_zigzag(df)
+    bull_fvg, bear_fvg = calculate_fvg(df)
+    bull_div, bear_div = detect_div(df)
+    score, struct_t, six_t, fvg_t, div_t, rsi_t = calculate_score_v17(pivots, last, df, bull_fvg, bear_fvg, bull_div, bear_div)
 
     atr = float(last['ATR']) if not pd.isna(last['ATR']) else float(last['Close'])*0.02
-    # Simple SL based on last pivot
-    buy_sl = pivots[-1]['val'] if pivots and pivots[-1]['type']=='low' else float(last['Close']) - 2*atr
-    sell_sl = pivots[-1]['val'] if pivots and pivots[-1]['type']=='high' else float(last['Close']) + 2*atr
-    
-    tp1 = 0; tp2 = 0; entry_zone = "現價"; risk_warning = ""
-    # Simplified Target Logic
-    if score >= 0:
-        entry_zone = f"{fmt_price(last['Close'])}"
-        tp1 = last['Close'] * 1.02 # 2%
-    else:
-        entry_zone = f"{fmt_price(last['Close'])}"
-        tp1 = last['Close'] * 0.98
+    pivot_lows = [p['val'] for p in pivots if p['type']=='low']; pivot_highs = [p['val'] for p in pivots if p['type']=='high']
+    buy_sl = pivot_lows[-1] if pivot_lows else float(last['Close']) - 2*atr
+    sell_sl = pivot_highs[-1] if pivot_highs else float(last['Close']) + 2*atr
+    if buy_sl >= last['Close']: buy_sl = float(last['Close']) - 2*atr
+    if sell_sl <= last['Close']: sell_sl = float(last['Close']) + 2*atr
 
-    st.info(generate_ai_report(symbol, last['Close'], score, struct_t, six_t, ob_t, div_t, rsi_t, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning))
+    tp1 = 0; tp2 = 0; entry_zone = "現價"; risk_warning = ""
+    if len(pivots) >= 2:
+        lh = [p['val'] for p in pivots if p['type']=='high'][-1]; ll = [p['val'] for p in pivots if p['type']=='low'][-1]
+        diff = abs(lh - ll)
+        if score >= 0:
+            tp1 = lh; tp2 = ll + diff * 1.618; fib_low = ll + diff * 0.382; fib_high = ll + diff * 0.618
+            if last['Close'] < fib_high and last['Close'] > buy_sl: entry_zone = f"{fmt_price(last['Close'])} (現價優)"
+            else: entry_zone = f"{fmt_price(fib_low)} ~ {fmt_price(fib_high)}"
+            if last['Close'] >= tp1: tp1 = ll + diff * 1.272; risk_warning = "創高，止盈上移"
+            elif last['Close'] < buy_sl: risk_warning = "❌ 結構破壞"; score = 0
+        else:
+            tp1 = ll; tp2 = lh - diff * 1.618; fib_low = lh - diff * 0.618; fib_high = lh - diff * 0.382
+            if last['Close'] > fib_low and last['Close'] < sell_sl: entry_zone = f"{fmt_price(last['Close'])} (現價優)"
+            else: entry_zone = f"{fmt_price(fib_low)} ~ {fmt_price(fib_high)}"
+            if last['Close'] <= tp1: tp1 = lh - diff * 1.272; risk_warning = "創低，止盈下移"
+            elif last['Close'] > sell_sl: risk_warning = "❌ 結構破壞"; score = 0
+
+    st.info(generate_ai_report(symbol, last['Close'], score, struct_t, six_t, fvg_t, div_t, rsi_t, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning))
 
     # --- Chart Area ---
     indicator_mode = st.radio("副圖", ["RSI", "MACD"], horizontal=True, label_visibility="collapsed")
@@ -455,7 +414,7 @@ if df is not None and not df.empty:
         shared_xaxes=True, 
         vertical_spacing=0.03, 
         row_heights=[0.6, 0.15, 0.25],
-        subplot_titles=("價格 (SMC)", "成交量", indicator_mode)
+        subplot_titles=("價格", "成交量", indicator_mode)
     )
 
     # 1. Main
@@ -467,24 +426,14 @@ if df is not None and not df.empty:
         fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)'), fill='tonexty', fillcolor='rgba(255,255,255,0.05)'), row=1, col=1)
     
-    # SMC Layers (Order Blocks & Pivots)
-    if show_smc:
-        # Draw Order Blocks
-        for ob in smc_obs[-5:]: # Show last 5 OBs
-            fill = "rgba(0, 255, 0, 0.2)" if ob['type']=='bull' else "rgba(255, 0, 0, 0.2)"
-            fig.add_shape(type="rect", x0=ob['start'], x1=df.index[-1], y0=ob['bottom'], y1=ob['top'], fillcolor=fill, line_width=0, row=1, col=1)
-        # Draw Pivots Label (HH, LL...)
-        for p in pivots[-10:]: # Last 10 pivots
-            if 'label' in p:
-                clr = "#00FF00" if "H" in p['label'] and p['type']=='low' else "red"
-                fig.add_annotation(x=p['idx'], y=p['val'], text=p['label'], showarrow=False, font=dict(color=clr, size=10), yshift=15 if p['type']=='high' else -15, row=1, col=1)
-
-    if show_div:
-        if bull_div:
-            fig.add_trace(go.Scatter(x=bull_div, y=df.loc[bull_div]['Low'], mode='markers', name='底背離', marker=dict(symbol='triangle-up', color='white', size=12)), row=1, col=1)
-        if bear_div:
-            fig.add_trace(go.Scatter(x=bear_div, y=df.loc[bear_div]['High'], mode='markers', name='頂背離', marker=dict(symbol='triangle-down', color='yellow', size=12)), row=1, col=1)
-
+    if show_fvg:
+        for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y')
+        for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.15)", line_width=0, xref='x', yref='y')
+    if show_zigzag and pivots:
+        px = [p['idx'] for p in pivots]; py = [p['val'] for p in pivots]
+        fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=2), marker_size=4), row=1, col=1)
+    if show_fib and tp1 > 0:
+        fig.add_hline(y=tp1, line_dash="dash", line_color="yellow", annotation_text=f"TP1 {fmt_price(tp1)}")
     if show_orders:
         if st.session_state.positions:
             for pos in st.session_state.positions:
@@ -514,9 +463,18 @@ if df is not None and not df.empty:
         fig.add_trace(go.Scatter(x=gc_data.index, y=gc_data['MACD'], mode='markers', name='金叉', marker=dict(symbol='triangle-up', color='#00FF00', size=10)), row=3, col=1)
         fig.add_trace(go.Scatter(x=dc_data.index, y=dc_data['MACD'], mode='markers', name='死叉', marker=dict(symbol='triangle-down', color='#FF0000', size=10)), row=3, col=1)
 
-    fig.update_layout(template="plotly_dark", height=700, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
+    # --- [圖表設定優化] 關鍵修改：dragmode='pan' ---
+    fig.update_layout(
+        template="plotly_dark", 
+        height=700, 
+        margin=dict(l=10, r=10, t=10, b=10), 
+        showlegend=False,
+        dragmode='pan'  # 預設為拖曳移動
+    )
     fig.update_xaxes(rangeslider_visible=False)
-    st.plotly_chart(fig, use_container_width=True)
+    
+    # 允許滾輪縮放
+    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': False})
 
     # --- Panel ---
     st.divider()
@@ -587,6 +545,7 @@ if df is not None and not df.empty:
                     u_pnl = pos['margin'] * (((live - pos['entry']) / pos['entry']) * pos['lev'] * d)
                     pnl_pct = (((live - pos['entry']) / pos['entry']) * pos['lev'] * d) * 100
                     
+                    # Triggers (TP/SL)
                     trig = None; r_ratio = 100
                     liq = pos['entry']*(1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry']*(1 + 1/pos['lev'])
                     if (pos['type']=='Long' and live<=liq) or (pos['type']=='Short' and live>=liq): trig="💀 爆倉"
@@ -594,6 +553,7 @@ if df is not None and not df.empty:
                     elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live<=pos['sl']) or (pos['type']=='Short' and live>=pos['sl'])): trig="🛡️ 止損"; st.session_state.positions[i]['sl']=0
                     if trig: close_position(i, r_ratio, trig, live); st.rerun()
 
+                    # UI
                     col_h1, col_h2 = st.columns([3, 1])
                     col_h1.markdown(f"**#{i+1} {pos['symbol']}**")
                     if col_h2.button(f"🔍 分析", key=f"ana_{i}"): st.session_state.chart_symbol = pos['symbol']; st.rerun()
