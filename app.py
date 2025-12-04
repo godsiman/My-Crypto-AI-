@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v85.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v85.0 專業術語版)")
+st.set_page_config(page_title="全方位戰情室 AI (v86.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v86.0 戰略指揮官版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v85.json"
+DATA_FILE = "trade_data_v86.json"
 
 def save_data():
     data = {
@@ -89,50 +89,49 @@ def get_locked_funds():
     for o in st.session_state.pending_orders: locked += float(o.get('margin', 0.0))
     return locked
 
-# --- [升級] 專業指標計算 (MACD, KD, BB) ---
+# --- Indicator Calculation ---
 def calculate_indicators(df):
     if df is None or df.empty: return df
     df = df.copy()
     
-    # 1. 均線 (EMA)
+    # 均線
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA60'] = df['Close'].ewm(span=60).mean()
     
-    # 2. RSI
+    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
     loss = (-delta.where(delta < 0, 0)).fillna(0)
     rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # 3. MACD
+    # MACD
     exp12 = df['Close'].ewm(span=12, adjust=False).mean()
     exp26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = exp12 - exp26
     df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['Hist'] = df['MACD'] - df['Signal']
     
-    # 4. Bollinger Bands (布林通道)
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['STD20'] = df['Close'].rolling(window=20).std()
+    # BB
+    df['MA20'] = df['Close'].rolling(20).mean()
+    df['STD20'] = df['Close'].rolling(20).std()
     df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2)
     df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
     
-    # 5. KDJ (隨機指標)
+    # KD
     low_min = df['Low'].rolling(9).min()
     high_max = df['High'].rolling(9).max()
     df['RSV'] = (df['Close'] - low_min) / (high_max - low_min) * 100
     df['K'] = df['RSV'].ewm(com=2).mean()
     df['D'] = df['K'].ewm(com=2).mean()
-    df['J'] = 3 * df['K'] - 2 * df['D']
     
-    # 6. ATR (波動率)
+    # ATR
     df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
     df['ATR'] = df['TR'].rolling(14).mean()
     
     return df
 
-# --- Chart Data ---
+# --- Chart Data Fetcher ---
 def get_chart_data(symbol, interval_ui):
     if interval_ui == "15分鐘": period, interval = "1mo", "15m"
     elif interval_ui == "1小時": period, interval = "6mo", "1h"
@@ -149,104 +148,107 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- [大腦升級] 專業技術分析邏輯 ---
-@st.cache_data(ttl=60) # 縮短緩存時間以獲得即時分析
-def get_professional_analysis(symbol, interval_ui):
-    df = get_chart_data(symbol, interval_ui)
-    if df is None or len(df) < 30: return None
+# --- [核心邏輯升級] 混合 AI 分析 (宏觀+微觀) ---
+@st.cache_data(ttl=120)
+def get_hybrid_strategy(symbol, current_interval_ui):
+    # 1. 宏觀分析 (Macro): 掃描 月/週/日
+    macro_intervals = {"M": ("1mo","5y"), "W": ("1wk","2y"), "D": ("1d","1y")}
+    macro_trends = {}
+    macro_score = 0
     
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
+    for tf, (inter, per) in macro_intervals.items():
+        try:
+            df_m = yf.Ticker(symbol).history(period=per, interval=inter)
+            if not df_m.empty:
+                df_m = calculate_indicators(df_m)
+                last = df_m.iloc[-1]
+                # 簡單趨勢判定: 價格在 EMA20 之上 = 多, 之下 = 空
+                if last['Close'] > last['EMA20']:
+                    macro_trends[tf] = "多頭"
+                    macro_score += 1
+                else:
+                    macro_trends[tf] = "空頭"
+                    macro_score -= 1
+        except:
+            macro_trends[tf] = "未知"
+
+    # 2. 微觀分析 (Micro): 分析當前選擇的週期 (例如 15分)
+    # 這裡的訊號比重較大，因為這是你的入場時機
+    df_curr = get_chart_data(symbol, current_interval_ui)
+    if df_curr is None or len(df_curr) < 30: return None
     
+    last = df_curr.iloc[-1]
+    prev = df_curr.iloc[-2]
+    
+    micro_score = 0
     signals = []
-    score = 0
     
-    # --- 1. 均線分析 ---
+    # 均線排列
     if last['Close'] > last['EMA20'] > last['EMA60']:
-        signals.append("✅ 均線多頭排列 (Trend Up)")
-        score += 2
+        signals.append("✅ 均線多頭排列")
+        micro_score += 2
     elif last['Close'] < last['EMA20'] < last['EMA60']:
-        signals.append("🔻 均線空頭排列 (Trend Down)")
-        score -= 2
+        signals.append("🔻 均線空頭排列")
+        micro_score -= 2
         
-    # 金叉/死叉 (EMA)
-    if prev['EMA20'] < prev['EMA60'] and last['EMA20'] > last['EMA60']:
-        signals.append("⭐ EMA 黃金交叉 (Golden Cross)")
-        score += 3
-    elif prev['EMA20'] > prev['EMA60'] and last['EMA20'] < last['EMA60']:
-        signals.append("💀 EMA 死亡交叉 (Death Cross)")
-        score -= 3
-
-    # --- 2. MACD 動能 ---
-    if last['Hist'] > 0 and prev['Hist'] <= 0:
-        signals.append("✅ MACD 翻紅 (Momentum Bullish)")
-        score += 2
-    elif last['Hist'] < 0 and prev['Hist'] >= 0:
-        signals.append("🔻 MACD 翻綠 (Momentum Bearish)")
-        score -= 2
-        
-    # MACD 金叉 (柱狀體在零軸下金叉更有力)
+    # MACD 金叉/死叉
     if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
-        if last['MACD'] < 0:
-            signals.append("🚀 MACD 零軸下金叉 (Strong Buy)")
-            score += 3
-        else:
-            signals.append("✅ MACD 高位金叉")
-            score += 1
-
-    # --- 3. RSI 與 背離 (Divergence) ---
-    if last['RSI'] < 30:
-        signals.append("⚠️ RSI 超賣 (Oversold) - 等待反彈")
-        score += 1
-    elif last['RSI'] > 70:
-        signals.append("⚠️ RSI 超買 (Overbought) - 注意回調")
-        score -= 1
+        signals.append("🚀 MACD 黃金交叉")
+        micro_score += 2
+    elif last['MACD'] < last['Signal'] and prev['MACD'] >= prev['Signal']:
+        signals.append("💀 MACD 死亡交叉")
+        micro_score -= 2
         
-    # 簡易背離偵測 (看過去 10 根 K 線)
-    recent_low = df['Close'].tail(10).min()
-    recent_rsi_low = df['RSI'].tail(10).min()
+    # RSI 背離 (簡易)
+    recent_low = df_curr['Close'].tail(15).min()
+    recent_rsi_low = df_curr['RSI'].tail(15).min()
     if last['Close'] <= recent_low and last['RSI'] > recent_rsi_low + 5:
-        signals.append("💎 RSI 底背離 (Bullish Divergence) - 潛在反轉")
-        score += 3
-        
-    recent_high = df['Close'].tail(10).max()
-    recent_rsi_high = df['RSI'].tail(10).max()
-    if last['Close'] >= recent_high and last['RSI'] < recent_rsi_high - 5:
-        signals.append("📉 RSI 頂背離 (Bearish Divergence) - 潛在做頭")
-        score -= 3
-
-    # --- 4. KD 指標 (KDJ) ---
-    if last['K'] > last['D'] and prev['K'] <= prev['D']:
-        signals.append("✅ KD 黃金交叉")
-        score += 1
-    elif last['K'] < last['D'] and prev['K'] >= prev['D']:
-        signals.append("🔻 KD 死亡交叉")
-        score -= 1
-
-    # --- 5. 布林通道 ---
+        signals.append("💎 RSI 底背離 (潛在反轉)")
+        micro_score += 3
+    
+    # 布林
     if last['Close'] > last['BB_Upper']:
-        signals.append("🔥 突破布林上軌 (Strong Momentum)")
-        score += 1
+        signals.append("🔥 突破布林上軌 (動能強)")
+        micro_score += 1
     elif last['Close'] < last['BB_Lower']:
-        signals.append("❄️ 跌破布林下軌 (Oversold)")
-        score -= 1
+        signals.append("❄️ 跌破布林下軌 (超賣)")
+        micro_score -= 1 # 短線可能反彈，但趨勢是空
 
-    # 綜合建議
-    direction = "觀望 (Neutral)"
-    color = "gray"
-    if score >= 4: direction = "強力做多 (Strong Buy)"; color = "green"
-    elif score >= 1: direction = "嘗試做多 (Buy)"; color = "lightgreen"
-    elif score <= -4: direction = "強力做空 (Strong Sell)"; color = "red"
-    elif score <= -1: direction = "嘗試做空 (Sell)"; color = "pink"
+    # 3. 綜合評分與建議
+    # 總分 = 宏觀(30%) + 微觀(70%)
+    final_score = (macro_score * 0.3) + (micro_score * 0.7)
+    
+    direction = "觀望"
+    if final_score >= 1.5: direction = "強力做多 (Strong Buy)"
+    elif final_score >= 0.5: direction = "嘗試做多 (Buy)"
+    elif final_score <= -1.5: direction = "強力做空 (Strong Sell)"
+    elif final_score <= -0.5: direction = "嘗試做空 (Sell)"
+    
+    # 4. 具體點位計算 (基於 ATR)
+    curr_price = last['Close']
+    atr = last.get('ATR', curr_price * 0.02)
+    
+    if final_score > 0:
+        # 多單建議
+        entry = curr_price # 市價進場
+        tp = entry + (atr * 2.5)
+        sl = entry - (atr * 1.5)
+    else:
+        # 空單建議
+        entry = curr_price
+        tp = entry - (atr * 2.5)
+        sl = entry + (atr * 1.5)
 
     return {
-        "score": score,
         "direction": direction,
+        "score": final_score,
+        "macro_trends": macro_trends,
         "signals": signals,
-        "color": color,
-        "last_price": last['Close'],
-        "atr": last['ATR'],
-        "df": df
+        "entry": entry,
+        "tp": tp,
+        "sl": sl,
+        "df": df_curr,
+        "last_price": curr_price
     }
 
 # --- Callbacks ---
@@ -283,8 +285,7 @@ def manage_position_dialog(i, pos, current_price):
         roe_pct = (u_pnl / margin) * 100 if margin > 0 else 0.0
         color = "green" if u_pnl >= 0 else "red"
         st.markdown(f"未結盈虧: <span style='color:{color}; font-weight:bold'>${u_pnl:+.2f} ({roe_pct:+.2f}%)</span>", unsafe_allow_html=True)
-    except: 
-        entry = 0; lev = 1; pos_type = 'Long'
+    except: entry=0; lev=1; pos_type='Long'
 
     tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
     with tab_close:
@@ -298,8 +299,8 @@ def manage_position_dialog(i, pos, current_price):
         new_sl = float(pos.get('sl', 0))
         if mode == "價格":
             c1, c2 = st.columns(2)
-            new_tp = c1.number_input("TP", value=new_tp, key=f"ntp_p_{i}", format="%.6f")
-            new_sl = c2.number_input("SL", value=new_sl, key=f"nsl_p_{i}", format="%.6f")
+            new_tp = c1.number_input("TP 價格", value=new_tp, key=f"ntp_p_{i}", format="%.6f")
+            new_sl = c2.number_input("SL 價格", value=new_sl, key=f"nsl_p_{i}", format="%.6f")
         else:
             c1, c2 = st.columns(2)
             roe_tp = c1.number_input("止盈 %", value=0.0, key=f"ntp_r_{i}")
@@ -375,17 +376,13 @@ if st.sidebar.button("🗑️ 重置數據"):
     st.rerun()
 
 # --- Main Logic ---
-with st.spinner(f"正在分析 {symbol} 技術形態..."):
-    # 使用新的專業分析函數
-    ai_res = get_professional_analysis(symbol, interval_ui)
+with st.spinner(f"正在連線戰情中心 {symbol}..."):
+    ai_res = get_hybrid_strategy(symbol, interval_ui)
 
 if ai_res:
     curr_price = ai_res['last_price']
     df_chart = ai_res['df']
     
-    if "多" in ai_res['direction']: rec_entry = curr_price
-    else: rec_entry = curr_price
-
     # Header
     c1, c2, c3 = st.columns([2, 1, 1])
     is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
@@ -426,6 +423,39 @@ if ai_res:
 
     st.divider()
 
+    # --- [全新] 戰略指揮中心 Dashboard ---
+    st.subheader("🧠 AI 戰略指揮中心")
+    
+    # 三欄佈局：宏觀 | 訊號 | 點位
+    col_macro, col_signal, col_action = st.columns([1, 1.5, 1.5])
+    
+    with col_macro:
+        st.markdown("#### 🔭 宏觀趨勢")
+        
+        def get_trend_icon(t):
+            return "🟢 多頭" if t=="多頭" else ("🔴 空頭" if t=="空頭" else "⚪ 未知")
+            
+        st.write(f"**月線 (M):** {get_trend_icon(ai_res['macro_trends'].get('M'))}")
+        st.write(f"**週線 (W):** {get_trend_icon(ai_res['macro_trends'].get('W'))}")
+        st.write(f"**日線 (D):** {get_trend_icon(ai_res['macro_trends'].get('D'))}")
+        
+    with col_signal:
+        st.markdown("#### 📡 技術形態訊號")
+        if not ai_res['signals']:
+            st.info("暫無明顯形態")
+        else:
+            for sig in ai_res['signals']:
+                st.markdown(f"- {sig}")
+                
+    with col_action:
+        st.markdown(f"#### 🚀 戰術建議: {ai_res['direction']}")
+        ac1, ac2, ac3 = st.columns(3)
+        ac1.metric("建議入場", fmt_price(ai_res['entry']))
+        ac2.metric("目標止盈", fmt_price(ai_res['tp']), delta="TP")
+        ac3.metric("防守止損", fmt_price(ai_res['sl']), delta="SL", delta_color="inverse")
+
+    st.divider()
+
     # --- Chart ---
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
@@ -433,7 +463,6 @@ if ai_res:
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Upper'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB上軌'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Lower'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB下軌'), row=1, col=1)
-    
     for pos in st.session_state.positions:
         if pos['symbol'] == symbol:
             fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
@@ -445,7 +474,7 @@ if ai_res:
     fig.update_xaxes(rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Trading & AI Analysis ---
+    # --- Trading ---
     tab_trade, tab_orders = st.tabs(["⚡ 下單交易", "📋 訂單管理"])
     
     with tab_trade:
@@ -459,9 +488,14 @@ if ai_res:
             
             with st.expander("進階 (止盈止損)", expanded=True):
                 mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
+                
+                # 自動填入建議點位 (僅當作預設值，用戶可改)
+                suggested_tp = ai_res['tp']
+                suggested_sl = ai_res['sl']
+                
                 if mode == "價格":
-                    t_tp = st.number_input("止盈價格", value=0.0, format="%.6f")
-                    t_sl = st.number_input("止損價格", value=0.0, format="%.6f")
+                    t_tp = st.number_input("止盈價格", value=float(suggested_tp), format="%.6f")
+                    t_sl = st.number_input("止損價格", value=float(suggested_sl), format="%.6f")
                 else:
                     roe_tp = st.number_input("止盈 ROE %", value=0.0)
                     roe_sl = st.number_input("止損 ROE %", value=0.0)
@@ -469,11 +503,18 @@ if ai_res:
                     direction = 1 if "多" in trade_type else -1
                     if roe_tp > 0: t_tp = curr_price * (1 + (roe_tp / 100) / lev * direction)
                     if roe_sl > 0: t_sl = curr_price * (1 - (roe_sl / 100) / lev * direction)
+                
                 t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
 
             if st.button("🚀 下單 / 掛單", type="primary", use_container_width=True):
                 final_entry = curr_price if t_entry == 0 else t_entry
-                if amt > available: st.error(f"可用餘額不足！ (可用: ${available:.2f})")
+                if mode == "ROE %":
+                    direction = 1 if "多" in trade_type else -1
+                    if roe_tp > 0: t_tp = final_entry * (1 + (roe_tp / 100) / lev * direction)
+                    if roe_sl > 0: t_sl = final_entry * (1 - (roe_sl / 100) / lev * direction)
+
+                if amt > available:
+                    st.error(f"可用餘額不足！ (可用: ${available:.2f})")
                 else:
                     new_pos = {
                         "symbol": symbol,
@@ -495,18 +536,8 @@ if ai_res:
                     st.rerun()
         
         with col_info:
-            # [大腦升級] 顯示專業術語報告
-            st.subheader("🧠 戰情室分析")
-            if "多" in ai_res['direction']: st.success(ai_res['direction'])
-            elif "空" in ai_res['direction']: st.error(ai_res['direction'])
-            else: st.warning(ai_res['direction'])
-            
-            st.markdown("---")
-            if not ai_res['signals']:
-                st.caption("目前無明顯技術形態訊號")
-            else:
-                for sig in ai_res['signals']:
-                    st.markdown(f"- {sig}")
+            st.info("☝️ 已自動填入 AI 建議點位")
+            st.caption("您可以手動調整或切換 ROE 模式")
 
     with tab_orders:
         st.subheader("🔥 持倉中")
