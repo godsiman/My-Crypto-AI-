@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v95.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v95.0 精準狙擊回測版)")
+st.set_page_config(page_title="全方位戰情室 AI (v96.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v96.0 趨勢濾網版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -100,7 +100,7 @@ def calculate_indicators(df):
     df['Total_Vol'] = df['Volume'].cumsum()
     df['VWAP'] = df['Total_VP'] / df['Total_Vol']
     
-    # ADX (趨勢強度)
+    # ADX
     high_diff = df['High'].diff()
     low_diff = -df['Low'].diff()
     df['+DM'] = np.where((high_diff > low_diff) & (high_diff > 0), high_diff, 0.0)
@@ -112,9 +112,11 @@ def calculate_indicators(df):
     df['DX'] = 100 * abs(df['+DI'] - df['-DI']) / (df['+DI'] + df['-DI'])
     df['ADX'] = df['DX'].ewm(alpha=1/14).mean()
 
+    # EMAs
     df['EMA7'] = df['Close'].ewm(span=7).mean()
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA60'] = df['Close'].ewm(span=60).mean()
+    df['EMA200'] = df['Close'].ewm(span=200).mean() # [新增] 牛熊分界線
     
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
@@ -152,9 +154,9 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- [大腦升級] 精準狙擊回測 ---
+# --- [策略核心升級] 趨勢過濾回測 ---
 def run_backtest_sniper(df, initial_capital=10000):
-    if df is None or len(df) < 50: return None
+    if df is None or len(df) < 200: return None # 至少需要200根算EMA200
     
     capital = initial_capital
     position = 0 # 0: Cash, 1: Long, -1: Short
@@ -162,78 +164,69 @@ def run_backtest_sniper(df, initial_capital=10000):
     equity_curve = []
     trades = []
     
-    # 這裡的邏輯與 get_institutional_strategy 保持一致，甚至更嚴格
-    for i in range(50, len(df)):
+    for i in range(200, len(df)):
         curr = df.iloc[i]
-        prev = df.iloc[i-1]
         timestamp = df.index[i]
         price = curr['Close']
         
-        # 1. 環境過濾 (ADX)
-        # 如果 ADX < 20，視為盤整垃圾時間，強制空手
-        is_trending = curr['ADX'] > 20
+        # --- 策略條件 (Strategy Logic) ---
         
-        # 2. 綜合評分
-        score = 0
+        # 1. 趨勢定義 (EMA200 是絕對防線)
+        is_bull_trend = price > curr['EMA200']
+        is_bear_trend = price < curr['EMA200']
         
-        # VWAP 濾網
-        if price > curr['VWAP']: score += 1
-        else: score -= 1
+        # 2. 進場訊號 (EMA交叉 + MACD確認 + RSI保護)
+        # 做多條件：
+        # - 價格 > EMA200 (牛市)
+        # - 價格 > EMA20 (短趨勢向上)
+        # - MACD 金叉 (動能向上)
+        # - RSI < 70 (不要追高)
+        buy_signal = (is_bull_trend and 
+                      price > curr['EMA20'] and 
+                      curr['MACD'] > curr['Signal'] and 
+                      curr['RSI'] < 70)
+                      
+        # 做空條件：
+        # - 價格 < EMA200 (熊市)
+        # - 價格 < EMA20 (短趨勢向下)
+        # - MACD 死叉 (動能向下)
+        # - RSI > 30 (不要追殺)
+        sell_signal = (is_bear_trend and 
+                       price < curr['EMA20'] and 
+                       curr['MACD'] < curr['Signal'] and 
+                       curr['RSI'] > 30)
         
-        # 均線趨勢
-        if price > curr['EMA20'] and curr['EMA20'] > curr['EMA60']: score += 1
-        elif price < curr['EMA20'] and curr['EMA20'] < curr['EMA60']: score -= 1
+        # 3. 出場訊號 (Trailing Stop / 趨勢反轉)
+        # 多單出場：跌破 EMA20 就跑
+        exit_long = (position == 1 and price < curr['EMA20'])
+        # 空單出場：站上 EMA20 就跑
+        exit_short = (position == -1 and price > curr['EMA20'])
         
-        # 動能 MACD
-        if curr['MACD'] > curr['Signal']: score += 1
-        else: score -= 1
+        # --- 執行交易 ---
         
-        # 3. 決策信號 (只有在趨勢明確時才開倉)
-        signal = 0
-        if is_trending:
-            if score >= 3: signal = 1   # 強力做多條件
-            elif score <= -3: signal = -1 # 強力做空條件
-        
-        # --- 執行交易 (模擬) ---
-        
-        # 進場邏輯
+        # 平倉優先
+        if exit_long:
+            pnl = (price - entry_price) / entry_price * capital
+            capital += pnl
+            position = 0
+            trades.append({'time': timestamp, 'type': '⚪ 平多 (TP/SL)', 'price': price, 'pnl': pnl, 'balance': capital})
+            
+        elif exit_short:
+            pnl = (entry_price - price) / entry_price * capital
+            capital += pnl
+            position = 0
+            trades.append({'time': timestamp, 'type': '⚪ 平空 (TP/SL)', 'price': price, 'pnl': pnl, 'balance': capital})
+            
+        # 開倉 (只有空手時才開)
         if position == 0:
-            if signal == 1:
+            if buy_signal:
                 position = 1
                 entry_price = price
-                trades.append({'time': timestamp, 'type': '🟢 做多 (Long)', 'price': price, 'balance': capital})
-            elif signal == -1:
+                trades.append({'time': timestamp, 'type': '🟢 順勢做多', 'price': price, 'balance': capital})
+            elif sell_signal:
                 position = -1
                 entry_price = price
-                trades.append({'time': timestamp, 'type': '🔴 做空 (Short)', 'price': price, 'balance': capital})
-        
-        # 出場邏輯 (或是反手)
-        elif position == 1: # 持多單
-            # 如果分數轉弱 (<0) 就平倉，不一定要等到 -3 反手
-            if score < 0:
-                pnl = (price - entry_price) / entry_price * capital
-                capital += pnl
-                position = 0 # 平倉觀望
-                trades.append({'time': timestamp, 'type': '⚪ 平多 (Close Long)', 'price': price, 'pnl': pnl, 'balance': capital})
-            elif signal == -1: # 強力反手訊號
-                pnl = (price - entry_price) / entry_price * capital
-                capital += pnl
-                position = -1
-                entry_price = price
-                trades.append({'time': timestamp, 'type': '🔄 反手做空', 'price': price, 'pnl': pnl, 'balance': capital})
-        
-        elif position == -1: # 持空單
-            if score > 0:
-                pnl = (entry_price - price) / entry_price * capital
-                capital += pnl
-                position = 0 # 平倉觀望
-                trades.append({'time': timestamp, 'type': '⚪ 平空 (Close Short)', 'price': price, 'pnl': pnl, 'balance': capital})
-            elif signal == 1: # 強力反手訊號
-                pnl = (entry_price - price) / entry_price * capital
-                capital += pnl
-                position = 1
-                entry_price = price
-                trades.append({'time': timestamp, 'type': '🔄 反手做多', 'price': price, 'pnl': pnl, 'balance': capital})
+                trades.append({'time': timestamp, 'type': '🔴 順勢做空', 'price': price, 'balance': capital})
                 
         # 記錄每日權益
         curr_equity = capital
@@ -249,6 +242,7 @@ def run_backtest_sniper(df, initial_capital=10000):
 # --- AI Strategy (Live) ---
 @st.cache_data(ttl=120)
 def get_institutional_strategy(symbol, current_interval_ui):
+    # Macro
     macro_intervals = {"M": ("1mo","5y"), "W": ("1wk","2y"), "D": ("1d","1y")}
     macro_trends = {}
     macro_score = 0
@@ -266,12 +260,22 @@ def get_institutional_strategy(symbol, current_interval_ui):
                     macro_score -= 1
         except: macro_trends[tf] = "未知"
 
+    # Micro
     df = get_chart_data(symbol, current_interval_ui)
-    if df is None or len(df) < 30: return None
+    if df is None or len(df) < 50: return None
     last = df.iloc[-1]; prev = df.iloc[-2]
     micro_score = 0; signals = []
     
-    # VWAP
+    # 1. EMA200 濾網 (最重要)
+    is_bull_trend = last['Close'] > last['EMA200']
+    if is_bull_trend:
+        signals.append("🐃 位於 EMA200 之上 (長期看多)")
+        micro_score += 2
+    else:
+        signals.append("🐻 位於 EMA200 之下 (長期看空)")
+        micro_score -= 2
+
+    # 2. VWAP
     is_above_vwap = False
     if last['Close'] > last['VWAP']:
         signals.append("🏦 站上 VWAP (機構成本之上)")
@@ -282,74 +286,63 @@ def get_institutional_strategy(symbol, current_interval_ui):
         micro_score -= 1
         is_above_vwap = False
 
-    # ADX
-    adx_val = last.get('ADX', 0)
-    if adx_val < 20:
-        signals.append("💤 ADX < 20 (無趨勢盤整)")
-        micro_score *= 0.5
-    elif adx_val > 25:
-        signals.append(f"🔥 ADX = {adx_val:.1f} (趨勢形成)")
-        micro_score *= 1.2
-
-    # Technicals
-    if last['Close'] > last['EMA7']:
-        signals.append("⚡ 站上短線 (EMA7)")
-        micro_score += 1.5
+    # 3. Technicals
+    if last['Close'] > last['EMA20']:
+        signals.append("✅ 站上 EMA20 (短趨勢向上)")
+        micro_score += 1
     else:
-        signals.append("⚠️ 跌破短線 (EMA7)")
-        micro_score -= 1.5
-
-    if last['Close'] > last['EMA20'] > last['EMA60']:
-        signals.append("✅ 均線多頭排列")
-        micro_score += 2
-    elif last['Close'] < last['EMA20'] < last['EMA60']:
-        signals.append("🔻 均線空頭排列")
-        micro_score -= 2
+        signals.append("🔻 跌破 EMA20 (短趨勢向下)")
+        micro_score -= 1
         
-    if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
-        signals.append("🚀 MACD 金叉")
-        micro_score += 2
+    if last['MACD'] > last['Signal']:
+        signals.append("🚀 MACD 金叉 (動能強)")
+        micro_score += 1
     
+    # RSI Protection
+    if last['RSI'] > 70:
+        signals.append("⚠️ RSI 超買 (禁止追多)")
+        micro_score -= 1
+    elif last['RSI'] < 30:
+        signals.append("⚠️ RSI 超賣 (禁止追空)")
+        micro_score += 1
+
+    # Final Score
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
     direction = "觀望"
     
-    if final_score >= 2.0: 
+    # Logic for Direction
+    if final_score >= 2.0 and is_bull_trend: 
         direction = "強力做多 (Strong Buy)"
-        action_msg = "🤖 AI 建議：現在動能超強！別猶豫了，建議直接市價進場追擊！"
-    elif final_score >= 0.5: 
+        action_msg = "🤖 AI 建議：牛市順勢單！現在是多頭回調後的上攻機會，建議做多。"
+    elif final_score >= 0.5 and is_bull_trend: 
         direction = "嘗試做多 (Buy)"
-        action_msg = "🤖 AI 建議：趨勢是向上的，但現在價格有點高，掛單等回調再接比較安全。"
-    elif final_score <= -2.0: 
+        action_msg = "🤖 AI 建議：長線是多頭，但短線還在整理，建議分批佈局。"
+    elif final_score <= -2.0 and not is_bull_trend: 
         direction = "強力做空 (Strong Sell)"
-        action_msg = "🤖 AI 建議：空頭很兇！反彈就是空，不要手軟！"
-    elif final_score <= -0.5: 
+        action_msg = "🤖 AI 建議：熊市順勢單！空頭排列成形，反彈就是空點。"
+    elif final_score <= -0.5 and not is_bull_trend: 
         direction = "嘗試做空 (Sell)"
-        action_msg = "🤖 AI 建議：看起來快跌了，掛高一點做空比較保險。"
+        action_msg = "🤖 AI 建議：長線是空頭，但短線有點超賣，建議反彈再空。"
     else:
-        action_msg = "🤖 AI 建議：現在多空不明，先喝杯咖啡觀望一下吧。"
+        direction = "觀望 (Neutral)"
+        action_msg = "🤖 AI 建議：多空打架中 (EMA200 與短線方向不一致)，建議空手看戲。"
 
     if is_above_vwap:
-        vwap_msg = "🟢 大戶還在顧盤！價格在成本線之上，趨勢有支撐，安啦！"
+        vwap_msg = "🟢 大戶成本線防守中，多頭有撐。"
         vwap_type = "success"
     else:
-        vwap_msg = "⚠️ 主力好像棄守了...價格跌破成本線，小心被套！"
+        vwap_msg = "⚠️ 價格在成本線下方，空方控盤。"
         vwap_type = "warning"
 
     curr_price = last['Close']
     atr = last.get('ATR', curr_price * 0.02)
-    recent_high = df['High'].tail(50).max()
-    recent_low = df['Low'].tail(50).min()
-    fib_0618 = recent_low + (recent_high - recent_low) * 0.618
-    fib_0382 = recent_low + (recent_high - recent_low) * 0.382
     
     if final_score > 0:
-        entry_target = max(fib_0618, last['EMA20']) 
-        entry = entry_target if (curr_price - entry_target) > atr else curr_price
+        entry = curr_price
         tp = entry + (atr * 3)
         sl = entry - (atr * 1.5)
     else:
-        entry_target = min(fib_0382, last['EMA20'])
-        entry = entry_target if (entry_target - curr_price) > atr else curr_price
+        entry = curr_price
         tp = entry - (atr * 3)
         sl = entry + (atr * 1.5)
 
@@ -568,12 +561,15 @@ if ai_res:
     # --- Chart ---
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
+    
+    # EMA200 (紫色粗線)
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA200'], line=dict(color='#E040FB', width=2), name='EMA200 (牛熊分界)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['VWAP'], line=dict(color='orange', width=2), name='VWAP'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1.5), name='EMA7 (短線)'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1), name='EMA7'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Upper'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB上軌'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Lower'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB下軌'), row=1, col=1)
+    
     for pos in st.session_state.positions:
         if pos['symbol'] == symbol:
             fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
@@ -693,8 +689,8 @@ if ai_res:
             st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
     with tab_backtest:
-        st.subheader(f"📈 {symbol} 歷史回測 (精準狙擊模式)")
-        st.caption("AI 將模擬過去 500 根 K 線，嚴格執行 VWAP + ADX + EMA 策略。")
+        st.subheader(f"📈 {symbol} 歷史回測 (趨勢濾網模式)")
+        st.caption("策略：EMA200濾網 + RSI過濾 + EMA20停利")
         if st.button("🚀 開始回測"):
             with st.spinner("正在穿越時空進行模擬交易..."):
                 eq_curve, trades_log = run_backtest_sniper(df_chart, 10000)
@@ -708,7 +704,7 @@ if ai_res:
                 final = eq_curve['equity'].iloc[-1]
                 total_ret = (final - initial) / initial * 100
                 win_count = len(trades_log[trades_log['pnl'] > 0]) if not trades_log.empty and 'pnl' in trades_log else 0
-                total_trades = len(trades_log[trades_log['type'].str.contains('Close')]) if not trades_log.empty else 0
+                total_trades = len(trades_log[trades_log['type'].str.contains('平')]) if not trades_log.empty else 0
                 win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
                 
                 m1, m2, m3 = st.columns(3)
