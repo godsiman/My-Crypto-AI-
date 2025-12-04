@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v48.0 圖表操控優化版)")
+st.markdown("### 🏦 全方位戰情室 AI (v49.0 全能戰情版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -173,8 +173,8 @@ interval_ui = st.sidebar.radio("週期", ["15分鐘", "1小時", "4小時", "日
 # 視覺化開關
 show_six = st.sidebar.checkbox("EMA 均線", value=True)
 show_bb = st.sidebar.checkbox("布林通道", value=False) 
-show_zigzag = st.sidebar.checkbox("ZigZag (結構)", value=False)
-show_fvg = st.sidebar.checkbox("FVG (缺口)", value=False)
+show_zigzag = st.sidebar.checkbox("SMC 結構 (ZigZag)", value=True) # 預設開啟
+show_fvg = st.sidebar.checkbox("SMC 缺口 (FVG)", value=True)
 show_fib = st.sidebar.checkbox("Fib (止盈)", value=True)
 show_orders = st.sidebar.checkbox("圖表掛單", value=True)
 
@@ -250,11 +250,26 @@ def calculate_zigzag(df, depth=12):
     try:
         df = df.copy(); df['max_roll'] = df['High'].rolling(depth, center=True).max(); df['min_roll'] = df['Low'].rolling(depth, center=True).min()
         pivots = []
+        last_pivot = None
         for i in range(len(df)):
+            idx = df.index[i]
             if not np.isnan(df['max_roll'].iloc[i]) and df['High'].iloc[i] == df['max_roll'].iloc[i]:
-                pivots.append({'idx': df.index[i], 'val': float(df['High'].iloc[i]), 'type': 'high'})
+                if last_pivot is None or last_pivot['type']=='low':
+                    pivots.append({'idx': idx, 'val': float(df['High'].iloc[i]), 'type': 'high'}); last_pivot=pivots[-1]
+                elif last_pivot['type']=='high' and df['High'].iloc[i] > last_pivot['val']:
+                    pivots[-1] = {'idx': idx, 'val': float(df['High'].iloc[i]), 'type': 'high'}
             elif not np.isnan(df['min_roll'].iloc[i]) and df['Low'].iloc[i] == df['min_roll'].iloc[i]:
-                pivots.append({'idx': df.index[i], 'val': float(df['Low'].iloc[i]), 'type': 'low'})
+                if last_pivot is None or last_pivot['type']=='high':
+                    pivots.append({'idx': idx, 'val': float(df['Low'].iloc[i]), 'type': 'low'}); last_pivot=pivots[-1]
+                elif last_pivot['type']=='low' and df['Low'].iloc[i] < last_pivot['val']:
+                    pivots[-1] = {'idx': idx, 'val': float(df['Low'].iloc[i]), 'type': 'low'}
+        
+        # Add Label (HH/LL)
+        if len(pivots) >= 2:
+            for i in range(2, len(pivots)):
+                curr = pivots[i]; prev = pivots[i-2]
+                if curr['type'] == 'high': curr['label'] = "HH" if curr['val'] > prev['val'] else "LH"
+                else: curr['label'] = "LL" if curr['val'] < prev['val'] else "HL"
         return pivots
     except: return []
 
@@ -429,9 +444,16 @@ if df is not None and not df.empty:
     if show_fvg:
         for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y')
         for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.15)", line_width=0, xref='x', yref='y')
+    
     if show_zigzag and pivots:
         px = [p['idx'] for p in pivots]; py = [p['val'] for p in pivots]
         fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=2), marker_size=4), row=1, col=1)
+        # SMC: Add Labels (HH/LL)
+        for p in pivots[-10:]: 
+            if 'label' in p:
+                label_clr = '#00FF00' if 'H' in p['label'] and p['type'] == 'high' else 'red'
+                fig.add_annotation(x=p['idx'], y=p['val'], text=p['label'], showarrow=False, font=dict(color=label_clr, size=10), yshift=15 if p['type']=='high' else -15, row=1, col=1)
+
     if show_fib and tp1 > 0:
         fig.add_hline(y=tp1, line_dash="dash", line_color="yellow", annotation_text=f"TP1 {fmt_price(tp1)}")
     if show_orders:
@@ -463,18 +485,23 @@ if df is not None and not df.empty:
         fig.add_trace(go.Scatter(x=gc_data.index, y=gc_data['MACD'], mode='markers', name='金叉', marker=dict(symbol='triangle-up', color='#00FF00', size=10)), row=3, col=1)
         fig.add_trace(go.Scatter(x=dc_data.index, y=dc_data['MACD'], mode='markers', name='死叉', marker=dict(symbol='triangle-down', color='#FF0000', size=10)), row=3, col=1)
 
-    # --- [圖表設定優化] 關鍵修改：dragmode='pan' ---
+    # --- [關鍵修復] 啟用圖表工具列 (displayModeBar=True) + 預設平移 (dragmode='pan') ---
     fig.update_layout(
         template="plotly_dark", 
         height=700, 
         margin=dict(l=10, r=10, t=10, b=10), 
         showlegend=False,
-        dragmode='pan'  # 預設為拖曳移動
+        dragmode='pan' # 預設手指滑動為「移動」
     )
     fig.update_xaxes(rangeslider_visible=False)
     
-    # 允許滾輪縮放
-    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': False})
+    # config: displayModeBar=True 把工具列叫回來
+    st.plotly_chart(fig, use_container_width=True, config={
+        'scrollZoom': True, 
+        'displayModeBar': True,
+        'displaylogo': False,
+        'modeBarButtonsToRemove': ['lasso2d', 'select2d'] # 移除不常用的選取工具，保持清爽
+    })
 
     # --- Panel ---
     st.divider()
@@ -545,7 +572,6 @@ if df is not None and not df.empty:
                     u_pnl = pos['margin'] * (((live - pos['entry']) / pos['entry']) * pos['lev'] * d)
                     pnl_pct = (((live - pos['entry']) / pos['entry']) * pos['lev'] * d) * 100
                     
-                    # Triggers (TP/SL)
                     trig = None; r_ratio = 100
                     liq = pos['entry']*(1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry']*(1 + 1/pos['lev'])
                     if (pos['type']=='Long' and live<=liq) or (pos['type']=='Short' and live>=liq): trig="💀 爆倉"
@@ -553,7 +579,6 @@ if df is not None and not df.empty:
                     elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live<=pos['sl']) or (pos['type']=='Short' and live>=pos['sl'])): trig="🛡️ 止損"; st.session_state.positions[i]['sl']=0
                     if trig: close_position(i, r_ratio, trig, live); st.rerun()
 
-                    # UI
                     col_h1, col_h2 = st.columns([3, 1])
                     col_h1.markdown(f"**#{i+1} {pos['symbol']}**")
                     if col_h2.button(f"🔍 分析", key=f"ana_{i}"): st.session_state.chart_symbol = pos['symbol']; st.rerun()
