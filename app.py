@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v90.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v90.0 白話投顧版)")
+st.set_page_config(page_title="全方位戰情室 AI (v91.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v91.0 帳戶淨值版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -152,7 +152,7 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- AI Strategy (含口語化邏輯) ---
+# --- AI Strategy ---
 @st.cache_data(ttl=120)
 def get_institutional_strategy(symbol, current_interval_ui):
     # Macro
@@ -222,7 +222,7 @@ def get_institutional_strategy(symbol, current_interval_ui):
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
     direction = "觀望"
     
-    # [口語化] 藍色區塊建議
+    # Action Message
     if final_score >= 2.0: 
         direction = "強力做多 (Strong Buy)"
         action_msg = "🤖 AI 建議：現在動能超強！別猶豫了，建議直接市價進場追擊！"
@@ -238,7 +238,7 @@ def get_institutional_strategy(symbol, current_interval_ui):
     else:
         action_msg = "🤖 AI 建議：現在多空不明，先喝杯咖啡觀望一下吧。"
 
-    # [口語化] 綠色區塊 VWAP 解讀
+    # VWAP Message
     if is_above_vwap:
         vwap_msg = "🟢 大戶還在顧盤！價格在成本線之上，趨勢有支撐，安啦！"
         vwap_type = "success"
@@ -443,12 +443,16 @@ if ai_res:
                 total_u_pnl += pnl
                 total_margin_used += m
         except: pass
+    
+    # 帳戶權益 = 餘額 + 未結盈虧
+    equity = balance + total_u_pnl
     total_roe = (total_u_pnl / total_margin_used * 100) if total_margin_used > 0 else 0.0
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("錢包餘額", f"${balance:,.2f}")
-    m2.metric("可用餘額", f"${available:,.2f}")
-    m3.metric("總未結盈虧", f"${total_u_pnl:+.2f}", delta=f"{total_roe:+.2f}%")
+    # [修正] 顯示帳戶淨值 (Equity)
+    m1.metric("帳戶淨值 (Equity)", f"${equity:,.2f}", delta=f"{total_u_pnl:+.2f}")
+    m2.metric("錢包餘額 (Wallet)", f"${balance:,.2f}")
+    m3.metric("可用餘額 (Available)", f"${available:,.2f}")
 
     st.divider()
 
@@ -480,6 +484,8 @@ if ai_res:
     # --- Chart ---
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
+    
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['VWAP'], line=dict(color='orange', width=2), name='VWAP'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1.5), name='EMA7 (短線)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
@@ -554,7 +560,6 @@ if ai_res:
                     st.rerun()
         
         with col_info:
-            # [新版] 白話文口語化解說
             st.info(ai_res['action_msg'])
             if ai_res['vwap_type'] == 'success':
                 st.success(ai_res['vwap_msg'])
