@@ -224,7 +224,7 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
         st.session_state.positions[pos_index]['margin'] -= close_margin
 
 # --- 主程式 ---
-df = get_data(symbol, period, interval)
+df = get_data(symbol, period, interval, None)
 
 if df is not None:
     last = df.iloc[-1]
@@ -241,7 +241,7 @@ if df is not None:
         if st.session_state.positions:
             st.markdown("##### 🔥 持倉列表")
             for i, pos in enumerate(st.session_state.positions):
-                # 全域監控：抓取該倉位的即時價格
+                # 自動抓取該幣種最新價 (全域監控)
                 live_price = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
                 
                 if live_price:
@@ -286,13 +286,13 @@ if df is not None:
                 else:
                     st.warning(f"讀取中 {pos['symbol']}...")
         else:
-            st.info("空倉中...")
+            st.info("空倉中，等待機會...")
 
         # 開倉區
         st.markdown("##### 🚀 開立新倉位")
         col_s1, col_s2 = st.columns(2)
-        trade_type = col_s1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
-        leverage = col_s2.number_input("槓桿", 1, 125, 20, key="new_lev")
+        trade_type = c1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
+        leverage = c2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
         # 資金全開
         principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
