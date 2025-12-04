@@ -9,7 +9,7 @@ from datetime import datetime
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
-st.title("🏦 全方位戰情室 AI (v32.0 旗艦完整版)")
+st.title("🏦 全方位戰情室 AI (v33.0 專業平倉版)")
 
 # --- Session init ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
@@ -84,21 +84,17 @@ if search_input.strip():
     raw_symbol = search_input.strip().upper()
 
 # 5. 格式化 Symbol (加上後綴) 並存入 Session
-# 這是修正「切換標的後下單錯誤」的關鍵
 final_symbol = raw_symbol
 
 if market == "加密貨幣":
-    # 如果輸入 BTC，自動變 BTC-USD
     if "USD" not in final_symbol and "-" not in final_symbol:
         final_symbol += "-USD"
 elif market == "台股":
-    # 如果是數字 (如 2330) 且沒後綴，加 .TW
     if final_symbol.isdigit() or (len(final_symbol) == 4 and final_symbol.isdigit()):
         final_symbol += ".TW"
     elif not final_symbol.endswith(".TW") and not final_symbol.endswith(".TWO"):
         final_symbol += ".TW"
 
-# 更新 Session State，並定義全域變數 symbol 供後續使用
 st.session_state.chart_symbol = final_symbol
 symbol = st.session_state.chart_symbol 
 
@@ -360,7 +356,7 @@ if df is not None and not df.empty:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # 邏輯: 自動與手動平倉
+                    # 邏輯: 自動平倉 (TP/SL) & 爆倉檢查
                     reason = None
                     if (pos['type']=='Long' and live_price <= liq) or (pos['type']=='Short' and live_price >= liq):
                         reason="💀 爆倉"
@@ -372,9 +368,41 @@ if df is not None and not df.empty:
                     if reason:
                         close_position(i, 100, reason, live_price); break
                     
-                    if st.button(f"平倉", key=f"close_{i}", use_container_width=True):
-                        close_position(i, 100, "手動", live_price); break
+                    # --- [升級區] 分頁式平倉 (市價 vs 進階) ---
+                    # 1. 倉位比例選擇器 (共用)
+                    close_ratio = st.radio(
+                        "選擇平倉比例", 
+                        [25, 50, 75, 100], 
+                        horizontal=True, 
+                        index=3, 
+                        key=f"ratio_{i}",
+                        format_func=lambda x: f"{x}%"
+                    )
+
+                    # 2. 功能分頁
+                    tab1, tab2 = st.tabs(["⚡ 市價平倉", "⚙️ 進階止盈損"])
                     
+                    # Tab 1: 快速平倉
+                    with tab1:
+                        btn_color = "primary" if close_ratio == 100 else "secondary"
+                        if st.button(f"確認賣出 {close_ratio}%", key=f"fast_{i}", type=btn_color, use_container_width=True):
+                            close_position(i, close_ratio, "手動市價", live_price); break
+                    
+                    # Tab 2: 設定 TP/SL (針對剩餘倉位)
+                    with tab2:
+                        curr_tp = pos.get('tp', 0.0)
+                        curr_sl = pos.get('sl', 0.0)
+                        
+                        c_tp, c_sl = st.columns(2)
+                        new_tp = c_tp.number_input(f"止盈", value=float(curr_tp), format="%.2f", key=f"tp_{i}")
+                        new_sl = c_sl.number_input(f"止損", value=float(curr_sl), format="%.2f", key=f"sl_{i}")
+                        
+                        if st.button("更新策略", key=f"upd_{i}", use_container_width=True):
+                            st.session_state.positions[i]['tp'] = new_tp
+                            st.session_state.positions[i]['sl'] = new_sl
+                            st.success("策略已更新！")
+                            st.rerun()
+
                     st.divider() 
         else:
             st.info("目前無持倉，等待交易機會...")
@@ -392,7 +420,6 @@ if df is not None and not df.empty:
             if principal > st.session_state.balance:
                 st.error("餘額不足！")
             else:
-                # 這裡強制使用全域變數 symbol，避免下單錯誤
                 new_pos = {"symbol": symbol, "type": "Long" if "做多" in trade_type else "Short",
                            "entry": curr_price, "lev": leverage, "margin": principal,
                            "tp": set_tp, "sl": set_sl, "time": datetime.now().strftime('%m-%d %H:%M')}
