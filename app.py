@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v92.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v92.0 四欄儀表板)")
+st.set_page_config(page_title="全方位戰情室 AI (v93.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v93.0 精簡看板版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -442,12 +442,11 @@ if ai_res:
     total_roe = (total_u_pnl / total_margin_used * 100) if total_margin_used > 0 else 0.0
     equity = balance + total_u_pnl
 
-    # [改版] 四欄式佈局
-    m1, m2, m3, m4 = st.columns(4)
+    # [改版] 三欄式，移除錢包餘額
+    m1, m2, m3 = st.columns(3)
     m1.metric("帳戶淨值 (Equity)", f"${equity:,.2f}")
-    m2.metric("錢包餘額 (Wallet)", f"${balance:,.2f}")
-    m3.metric("可用餘額 (Available)", f"${available:,.2f}")
-    m4.metric("總未結盈虧 (PnL)", f"${total_u_pnl:+.2f}", delta=f"{total_roe:+.2f}%")
+    m2.metric("可用餘額 (Available)", f"${available:,.2f}")
+    m3.metric("總未結盈虧 (PnL)", f"${total_u_pnl:+.2f}", delta=f"{total_roe:+.2f}%")
 
     st.divider()
 
