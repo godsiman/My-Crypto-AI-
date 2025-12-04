@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v83.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v83.0 自動爆倉版)")
+st.set_page_config(page_title="全方位戰情室 AI (v84.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v84.0 中文選單版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v83.json"
+DATA_FILE = "trade_data_v84.json"
 
 def save_data():
     data = {
@@ -159,9 +159,14 @@ def get_ai_strategy(symbol):
 
 # --- Callbacks ---
 def on_select_change():
-    new_sym = st.session_state.quick_select
+    # [更新] 這裡會收到 "BTC-USD 比特幣"，需要用 split 切割出代碼
+    raw_val = st.session_state.quick_select
+    new_sym = raw_val.split(" ")[0] # 取空格前的部分
+    
+    # 再次確認後綴 (雖然清單已經有了，但防呆)
     if st.session_state.market == "台股" and new_sym.isdigit(): new_sym += ".TW"
     if st.session_state.market == "加密貨幣" and "-" not in new_sym and "USD" not in new_sym: new_sym += "-USD"
+    
     st.session_state.chart_symbol = new_sym
     st.session_state.symbol_input = "" 
 
@@ -255,7 +260,7 @@ def close_position(pos_index, percentage, reason, exit_price):
     lev = float(pos.get('lev', 1))
     
     pnl = close_margin * (((exit_price - entry) / entry) * lev * direction)
-    st.session_state.balance += (close_margin + pnl) # 釋放保證金 + 盈虧
+    st.session_state.balance += (close_margin + pnl)
     
     st.session_state.history.append({
         "時間": datetime.now().strftime("%m-%d %H:%M"),
@@ -284,12 +289,34 @@ market = st.sidebar.radio("市場", ["加密貨幣", "美股", "台股"], index=
 st.session_state.market = market
 interval_ui = st.sidebar.radio("⏱️ K線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
+# [更新] 帶中文名稱的選單清單
 if market == "加密貨幣":
-    targets = ["BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD", "XRP-USD", "BNB-USD", "DNX-USD"]
+    targets = [
+        "BTC-USD 比特幣", 
+        "ETH-USD 以太坊", 
+        "SOL-USD 索拉納", 
+        "DOGE-USD 狗狗幣", 
+        "XRP-USD 瑞波幣", 
+        "BNB-USD 幣安幣", 
+        "DNX-USD Dynex"
+    ]
 elif market == "美股":
-    targets = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "COIN"]
+    targets = [
+        "NVDA 輝達", 
+        "TSLA 特斯拉", 
+        "AAPL 蘋果", 
+        "MSFT 微軟", 
+        "AMD 超微", 
+        "COIN Coinbase"
+    ]
 else:
-    targets = ["2330.TW", "2317.TW", "2454.TW", "2603.TW", "0050.TW"]
+    targets = [
+        "2330.TW 台積電", 
+        "2317.TW 鴻海", 
+        "2454.TW 聯發科", 
+        "2603.TW 長榮", 
+        "0050.TW 元大台灣50"
+    ]
 
 st.sidebar.markdown("---")
 st.sidebar.write("🔍 搜尋/選擇")
@@ -466,7 +493,7 @@ if ai_res and df_chart is not None:
                     pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
                     roe_pct = (pnl / pos['margin']) * 100
                     
-                    # [新增] 自動爆倉檢測
+                    # [自動爆倉]
                     if roe_pct <= -100.0:
                         close_position(i, 100, "💀 爆倉 (-100%)", p_cur)
                         st.toast(f"⚠️ {p_sym} 已爆倉！保證金歸零")
