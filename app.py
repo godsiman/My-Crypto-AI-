@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v42.0 資金管理版)")
+st.markdown("### 🏦 全方位戰情室 AI (v43.0 圖表旗艦版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -47,7 +47,7 @@ if 'data_loaded' not in st.session_state:
     load_data()
     st.session_state.data_loaded = True
 
-# 初始化下單金額變數 (用於按鈕快速填入)
+# 初始化下單金額變數
 if 'trade_amt_input' not in st.session_state: st.session_state.trade_amt_input = 1000.0
 
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
@@ -165,7 +165,10 @@ if st.sidebar.button("🚀 載入 K 線"):
 
 symbol = st.session_state.chart_symbol 
 interval_ui = st.sidebar.radio("週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
+
+# 視覺化開關
 show_six = st.sidebar.checkbox("EMA 均線", value=True)
+show_bb = st.sidebar.checkbox("布林通道 (BB)", value=False) # 新增
 show_zigzag = st.sidebar.checkbox("ZigZag", value=True)
 show_fvg = st.sidebar.checkbox("FVG 缺口", value=True)
 show_fib = st.sidebar.checkbox("Fib 止盈", value=True)
@@ -173,19 +176,14 @@ show_orders = st.sidebar.checkbox("圖表掛單", value=True)
 
 # --- [新增] 錢包管理區 ---
 st.sidebar.markdown("---")
-with st.sidebar.expander("💰 錢包管理 (救援/重置)"):
-    st.caption(f"目前餘額: ${st.session_state.balance:,.2f}")
-    if st.button("🔄 重置為 10,000 U"):
+with st.sidebar.expander("💰 錢包管理"):
+    st.caption(f"餘額: ${st.session_state.balance:,.2f}")
+    if st.button("🔄 重置為 1W U"):
         st.session_state.balance = 10000.0
-        st.session_state.positions = []
-        st.session_state.pending_orders = []
-        st.session_state.history = []
-        save_data()
-        st.rerun()
-    if st.button("➕ 補血 (+10,000 U)"):
-        st.session_state.balance += 10000.0
-        save_data()
-        st.rerun()
+        st.session_state.positions = []; st.session_state.pending_orders = []; st.session_state.history = []
+        save_data(); st.rerun()
+    if st.button("➕ 補血 +1W U"):
+        st.session_state.balance += 10000.0; save_data(); st.rerun()
 
 # --- Data Params ---
 def get_params(ui_selection):
@@ -204,17 +202,37 @@ def get_data(symbol, period, interval):
         if interval == "1h" and "6mo" in period:
             logic = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
             df = df.resample('4h').apply(logic).dropna()
+        
+        # Basic Calc
         df['Delta'] = df['Close'].diff()
         delta = df['Delta']
         gain = (delta.where(delta > 0, 0)).fillna(0)
         loss = (-delta.where(delta < 0, 0)).fillna(0)
         rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
         df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # EMA
         df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
         df['EMA60'] = df['Close'].ewm(span=60, adjust=False).mean()
         df['EMA120'] = df['Close'].ewm(span=120, adjust=False).mean()
+        
+        # BB (Bollinger Bands)
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['STD20'] = df['Close'].rolling(window=20).std()
+        df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2)
+        df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
+        
+        # MACD
+        exp12 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp26 = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp12 - exp26
+        df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        df['Hist'] = df['MACD'] - df['Signal']
+
+        # ATR
         df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
         df['ATR'] = df['TR'].rolling(14).mean()
+        
         return df.dropna(how='all')
     except: return None
 
@@ -379,17 +397,34 @@ if df is not None and not df.empty:
 
     st.info(generate_ai_report(symbol, last['Close'], score, struct_t, six_t, fvg_t, div_t, rsi_t, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning))
 
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7,0.3])
-    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name='價格', line=dict(color='white', width=2)), row=1, col=1)
+    # --- Chart Area (Enhanced) ---
+    # 副圖切換
+    indicator_mode = st.radio("副圖指標", ["RSI", "MACD"], horizontal=True, label_visibility="collapsed")
+
+    # K線 + 成交量 + 副圖 (3 Row Layout)
+    fig = make_subplots(
+        rows=3, cols=1, 
+        shared_xaxes=True, 
+        vertical_spacing=0.03, 
+        row_heights=[0.6, 0.15, 0.25],
+        subplot_titles=("價格", "成交量", indicator_mode)
+    )
+
+    # 1. 主圖 (K線 + 均線 + BB)
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
     if show_six:
-        fig.add_trace(go.Scatter(x=df.index, y=df['EMA20'], name='EMA20', line=dict(width=1), fill='tonexty'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], name='EMA60', line=dict(width=1)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA20'], name='EMA20', line=dict(width=1, color='yellow')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], name='EMA60', line=dict(width=1, color='cyan')), row=1, col=1)
+    if show_bb:
+        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB Upper', line=dict(width=1, color='rgba(255,255,255,0.3)')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB Lower', line=dict(width=1, color='rgba(255,255,255,0.3)'), fill='tonexty', fillcolor='rgba(255,255,255,0.05)'), row=1, col=1)
+    
     if show_fvg:
         for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y')
         for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.15)", line_width=0, xref='x', yref='y')
     if show_zigzag and pivots:
         px = [p['idx'] for p in pivots]; py = [p['val'] for p in pivots]
-        fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=3), marker_size=6), row=1, col=1)
+        fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=2), marker_size=4), row=1, col=1)
     if show_fib and tp1 > 0:
         fig.add_hline(y=tp1, line_dash="dash", line_color="yellow", annotation_text=f"TP1 {fmt_price(tp1)}")
     if show_orders:
@@ -402,9 +437,23 @@ if df is not None and not df.empty:
             for ord in st.session_state.pending_orders:
                 if ord['symbol'] == symbol: fig.add_hline(y=ord['entry'], line_dash="dash", line_color="orange", annotation_text=f"掛單")
 
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(width=2)), row=2, col=1)
-    fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1); fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
-    fig.update_layout(title=f"{symbol} 走勢", template="plotly_dark", height=500, margin=dict(l=10, r=10, t=40, b=10))
+    # 2. 成交量 (Volume) - 紅綠柱狀
+    colors = ['#00C853' if c >= o else '#FF3D00' for c, o in zip(df['Close'], df['Open'])]
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color=colors), row=2, col=1)
+
+    # 3. 副圖 (RSI 或 MACD)
+    if indicator_mode == "RSI":
+        fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(width=2, color='violet')), row=3, col=1)
+        fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
+        fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
+    else: # MACD
+        fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', line=dict(width=1, color='cyan')), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], name='Signal', line=dict(width=1, color='orange')), row=3, col=1)
+        hist_colors = ['#00C853' if h >= 0 else '#FF3D00' for h in df['Hist']]
+        fig.add_trace(go.Bar(x=df.index, y=df['Hist'], name='Hist', marker_color=hist_colors), row=3, col=1)
+
+    fig.update_layout(template="plotly_dark", height=700, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
+    fig.update_xaxes(rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Panel ---
@@ -434,7 +483,6 @@ if df is not None and not df.empty:
             entry_p = st.number_input("掛單價格", value=float(curr_price), format="%.6f")
         else: st.caption(f"市價約: {fmt_price(curr_price)}")
         
-        # --- [新增] 快速本金按鈕 ---
         st.write("快速選擇本金:")
         c_p1, c_p2, c_p3, c_p4 = st.columns(4)
         if c_p1.button("25%", use_container_width=True): st.session_state.trade_amt_input = st.session_state.balance * 0.25
