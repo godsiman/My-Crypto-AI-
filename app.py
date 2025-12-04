@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v93.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v93.0 精簡看板版)")
+st.set_page_config(page_title="全方位戰情室 AI (v94.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v94.0 策略回測版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -152,7 +152,80 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- AI Strategy ---
+# --- [新功能] 歷史回測引擎 ---
+def run_backtest(df, initial_capital=10000):
+    if df is None or len(df) < 50: return None
+    
+    capital = initial_capital
+    position = 0 # 0: Cash, 1: Long, -1: Short
+    entry_price = 0.0
+    equity_curve = []
+    trades = []
+    
+    # 模擬參數
+    leverage = 1 # 回測預設 1倍槓桿看趨勢準度 (避免槓桿放大誤差)
+    
+    for i in range(50, len(df)):
+        curr = df.iloc[i]
+        prev = df.iloc[i-1]
+        timestamp = df.index[i]
+        price = curr['Close']
+        
+        # 模擬 AI 評分 (簡化版，確保速度)
+        score = 0
+        if curr['Close'] > curr['EMA20']: score += 1
+        else: score -= 1
+        
+        if curr['MACD'] > curr['Signal']: score += 1
+        else: score -= 1
+        
+        if curr['Close'] > curr['EMA7']: score += 1
+        
+        # 交易信號
+        signal = 0
+        if score >= 2: signal = 1   # Buy
+        elif score <= -2: signal = -1 # Sell
+        
+        # 執行交易
+        if position == 0:
+            if signal == 1:
+                position = 1
+                entry_price = price
+                trades.append({'time': timestamp, 'type': 'Open Long', 'price': price, 'balance': capital})
+            elif signal == -1:
+                position = -1
+                entry_price = price
+                trades.append({'time': timestamp, 'type': 'Open Short', 'price': price, 'balance': capital})
+        
+        elif position == 1: # 持有多單
+            # 出場條件: 反轉信號 或 止損止盈 (這裡用簡單反轉測試)
+            if signal == -1:
+                pnl = (price - entry_price) / entry_price * capital
+                capital += pnl
+                position = -1 # 反手做空
+                entry_price = price
+                trades.append({'time': timestamp, 'type': 'Close Long & Open Short', 'price': price, 'pnl': pnl, 'balance': capital})
+        
+        elif position == -1: # 持有空單
+            if signal == 1:
+                pnl = (entry_price - price) / entry_price * capital
+                capital += pnl
+                position = 1 # 反手做多
+                entry_price = price
+                trades.append({'time': timestamp, 'type': 'Close Short & Open Long', 'price': price, 'pnl': pnl, 'balance': capital})
+                
+        # 記錄每日權益
+        curr_equity = capital
+        if position == 1:
+            curr_equity += (price - entry_price) / entry_price * capital
+        elif position == -1:
+            curr_equity += (entry_price - price) / entry_price * capital
+            
+        equity_curve.append({'time': timestamp, 'equity': curr_equity})
+        
+    return pd.DataFrame(equity_curve), pd.DataFrame(trades)
+
+# --- AI Strategy (Live) ---
 @st.cache_data(ttl=120)
 def get_institutional_strategy(symbol, current_interval_ui):
     # Macro
@@ -442,7 +515,6 @@ if ai_res:
     total_roe = (total_u_pnl / total_margin_used * 100) if total_margin_used > 0 else 0.0
     equity = balance + total_u_pnl
 
-    # [改版] 三欄式，移除錢包餘額
     m1, m2, m3 = st.columns(3)
     m1.metric("帳戶淨值 (Equity)", f"${equity:,.2f}")
     m2.metric("可用餘額 (Available)", f"${available:,.2f}")
@@ -496,7 +568,8 @@ if ai_res:
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Trading ---
-    tab_trade, tab_orders, tab_history = st.tabs(["⚡ 下單交易", "📋 訂單管理", "📜 歷史訂單"])
+    # [新增] 回測分頁
+    tab_trade, tab_orders, tab_history, tab_backtest = st.tabs(["⚡ 下單交易", "📋 訂單管理", "📜 歷史訂單", "📈 策略回測"])
     
     with tab_trade:
         col_ctrl, col_info = st.columns([2, 1])
@@ -553,10 +626,8 @@ if ai_res:
         
         with col_info:
             st.info(ai_res['action_msg'])
-            if ai_res['vwap_type'] == 'success':
-                st.success(ai_res['vwap_msg'])
-            else:
-                st.warning(ai_res['vwap_msg'])
+            if ai_res['vwap_type'] == 'success': st.success(ai_res['vwap_msg'])
+            else: st.warning(ai_res['vwap_msg'])
 
     with tab_orders:
         st.subheader("🔥 持倉中")
@@ -598,12 +669,42 @@ if ai_res:
 
     with tab_history:
         st.subheader("📜 歷史戰績")
-        if not st.session_state.history:
-            st.info("暫無歷史紀錄")
+        if not st.session_state.history: st.info("暫無歷史紀錄")
         else:
             hist_df = pd.DataFrame(st.session_state.history)
             hist_df = hist_df.iloc[::-1]
             st.dataframe(hist_df, use_container_width=True, hide_index=True)
+
+    with tab_backtest:
+        st.subheader(f"📈 {symbol} 歷史回測 ({interval_ui})")
+        if st.button("🚀 開始回測 (模擬過去500根K線)"):
+            with st.spinner("正在穿越時空進行模擬交易..."):
+                eq_curve, trades_log = run_backtest(df_chart, 10000)
+            if eq_curve is not None and not eq_curve.empty:
+                # 繪製資金曲線
+                fig_bt = go.Figure()
+                fig_bt.add_trace(go.Scatter(x=eq_curve['time'], y=eq_curve['equity'], mode='lines', name='資金曲線', line=dict(color='#00C853')))
+                fig_bt.update_layout(template="plotly_dark", title="回測資金增長", height=400)
+                st.plotly_chart(fig_bt, use_container_width=True)
+                
+                # 統計數據
+                initial = 10000
+                final = eq_curve['equity'].iloc[-1]
+                total_ret = (final - initial) / initial * 100
+                win_count = len(trades_log[trades_log['pnl'] > 0]) if not trades_log.empty and 'pnl' in trades_log else 0
+                total_trades = len(trades_log[trades_log['type'].str.contains('Close')]) if not trades_log.empty else 0
+                win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
+                
+                m1, m2, m3 = st.columns(3)
+                m1.metric("期初本金", "$10,000")
+                m2.metric("期末淨值", f"${final:,.2f}", delta=f"{total_ret:+.2f}%")
+                m3.metric("勝率", f"{win_rate:.1f}%", f"{total_trades} 筆交易")
+                
+                if not trades_log.empty:
+                    st.write("交易明細：")
+                    st.dataframe(trades_log, use_container_width=True)
+            else:
+                st.warning("數據不足，無法回測")
 
 else:
     st.error(f"❌ 無法讀取 {symbol}，請確認代碼或網路連線。")
