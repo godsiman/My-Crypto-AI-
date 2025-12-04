@@ -225,7 +225,7 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
         st.session_state.positions[pos_index]['margin'] -= close_margin
 
 # --- 主程式 ---
-df = get_data(symbol, period, interval, None)
+df = get_data(symbol, period, interval)
 
 if df is not None:
     last = df.iloc[-1]
@@ -242,7 +242,7 @@ if df is not None:
         if st.session_state.positions:
             st.markdown("##### 🔥 持倉列表")
             for i, pos in enumerate(st.session_state.positions):
-                # 自動抓取該幣種最新價
+                # 自動抓取該幣種最新價 (全域監控)
                 live_price = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
                 
                 if live_price:
@@ -253,6 +253,7 @@ if df is not None:
                     if pos['type'] == 'Long': liq = pos['entry'] * (1 - 1/pos['lev'])
                     else: liq = pos['entry'] * (1 + 1/pos['lev'])
                     
+                    # 卡片 UI
                     with st.container():
                         # 標題 + 跳轉按鈕
                         c_title, c_jump = st.columns([3, 1])
@@ -264,7 +265,7 @@ if df is not None:
                         
                         c1, c2 = st.columns(2)
                         c1.write(f"{pos['type']} {pos['lev']}x")
-                        # 損益顏色
+                        # 損益顏色與小數位修正
                         color = "green" if pnl_usdt >= 0 else "red"
                         c2.markdown(f":{color}[**{pnl_usdt:+.2f} U**]")
                         
@@ -341,6 +342,7 @@ if df is not None:
     if sell_sl <= last['Close']: sell_sl = last['Close'] + 2*atr
 
     tp1 = 0; tp2 = 0; entry_zone = "現價"; risk_warning = "" 
+
     if len(pivots) >= 2:
         lh = [p['val'] for p in pivots if p['type']=='high'][-1]
         ll = [p['val'] for p in pivots if p['type']=='low'][-1]
