@@ -9,8 +9,9 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v74.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v74.0 最終版)")
+# [驗證點] 請確認網頁標題顯示 v75.0，才代表更新成功
+st.set_page_config(page_title="全方位戰情室 AI (v75.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v75.0 最終修復版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +22,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v74.json"
+DATA_FILE = "trade_data_v75.json"
 
 def save_data():
     data = {
@@ -66,6 +67,7 @@ def fmt_price(val):
     if val is None: return "N/A"
     try:
         valf = float(val)
+        # [修復驗證] 只要小於 1.0，強制顯示 6 位小數
         if valf < 1.0: return f"${valf:.6f}"
         elif valf < 20: return f"${valf:.4f}"
         else: return f"${valf:,.2f}"
@@ -151,7 +153,7 @@ def get_ai_strategy(symbol):
 
     return {"direction": direction, "score": total_score, "trends": trends, "last_price": last_price}
 
-# --- Callbacks (關鍵修復位置) ---
+# --- Callbacks (修復導航與輸入衝突) ---
 def on_select_change():
     new_sym = st.session_state.quick_select
     if st.session_state.market == "台股" and new_sym.isdigit(): new_sym += ".TW"
@@ -166,7 +168,7 @@ def on_input_change():
         if st.session_state.market == "加密貨幣" and "-" not in val and "USD" not in val: val += "-USD"
         st.session_state.chart_symbol = val
 
-# [核心修復] 將跳轉功能獨立為 Callback 函數
+# [核心修復] 導航按鈕的回調函數
 def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
     st.session_state.symbol_input = "" 
@@ -288,6 +290,7 @@ if ai_res and df_chart is not None:
     is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
     p_color = "#00C853" if is_up else "#FF3D00"
     
+    # [修復] 這裡控制大標題的價格顯示，小於 1.0 會顯示 6 位小數
     if curr_price < 1.0:
         price_display = f"${curr_price:.6f}"
     else:
@@ -390,7 +393,7 @@ if ai_res and df_chart is not None:
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     
-                    # [絕對關鍵修正] 使用 on_click 並傳入參數
+                    # [重點修復] 使用 callback 跳轉
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
@@ -412,7 +415,7 @@ if ai_res and df_chart is not None:
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
                 
-                # [絕對關鍵修正] 使用 on_click 並傳入參數
+                # [重點修復] 使用 callback 跳轉
                 c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
                     
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
