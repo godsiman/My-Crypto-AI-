@@ -11,17 +11,14 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v60.0 終極架構版)")
+st.markdown("### 🏦 全方位戰情室 AI (v61.0 救命修復版)")
 
-# --- [核心修復] JSON 序列化編碼器 (解決存檔失敗) ---
+# --- [核心] NpEncoder (解決存檔崩潰) ---
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
+        if isinstance(obj, np.integer): return int(obj)
+        if isinstance(obj, np.floating): return float(obj)
+        if isinstance(obj, np.ndarray): return obj.tolist()
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence System ---
@@ -36,8 +33,7 @@ def save_data():
     }
     try:
         with open(DATA_FILE, "w") as f:
-            # 使用 NpEncoder 解決 numpy 格式問題
-            json.dump(data, f, cls=NpEncoder) 
+            json.dump(data, f, cls=NpEncoder)
     except Exception as e:
         st.error(f"存檔失敗: {e}")
 
@@ -46,10 +42,13 @@ def load_data():
         try:
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
-                st.session_state.balance = float(data.get("balance", 10000.0))
                 
-                # 強制清洗數據，轉為 float，防止報錯
-                clean_pos = []
+                # [強制防呆] 確保數據類型正確，防止 AttributeError
+                bal = data.get("balance", 10000.0)
+                st.session_state.balance = float(bal) if bal is not None else 10000.0
+                
+                # 清洗持倉
+                valid_pos = []
                 for p in data.get("positions", []):
                     try:
                         p['entry'] = float(p['entry'])
@@ -57,24 +56,29 @@ def load_data():
                         p['lev'] = float(p['lev'])
                         p['tp'] = float(p.get('tp', 0))
                         p['sl'] = float(p.get('sl', 0))
-                        clean_pos.append(p)
+                        valid_pos.append(p)
                     except: continue
-                st.session_state.positions = clean_pos
+                st.session_state.positions = valid_pos
                 
                 # 清洗掛單
-                clean_ords = []
+                valid_ord = []
                 for o in data.get("pending_orders", []):
                     try:
                         o['entry'] = float(o['entry'])
                         o['margin'] = float(o['margin'])
-                        clean_ords.append(o)
+                        valid_ord.append(o)
                     except: continue
-                st.session_state.pending_orders = clean_ords
+                st.session_state.pending_orders = valid_ord
                 
                 st.session_state.history = data.get("history", [])
-        except: pass
+        except:
+            # 如果讀檔失敗，直接初始化
+            st.session_state.balance = 10000.0
+            st.session_state.positions = []
+            st.session_state.pending_orders = []
+            st.session_state.history = []
 
-# --- State Init (保證變數存在) ---
+# --- Init State (保證變數存在) ---
 if 'init_done' not in st.session_state:
     st.session_state.balance = 10000.0
     st.session_state.positions = []
@@ -83,19 +87,16 @@ if 'init_done' not in st.session_state:
     st.session_state.trade_amt_box = 1000.0
     st.session_state.chart_symbol = "BTC-USD"
     st.session_state.market = "加密貨幣"
-    load_data()
+    load_data() # 嘗試讀檔
     st.session_state.init_done = True
 
 # --- Callbacks ---
 def set_amt(ratio):
-    # 直接修改輸入框綁定的 key
-    val = float(st.session_state.balance * ratio)
-    if val < 0: val = 0.0
-    st.session_state.trade_amt_box = val
-
-def update_symbol():
-    # 當側邊欄選擇改變時觸發
-    pass
+    try:
+        val = float(st.session_state.balance * ratio)
+        if val < 0: val = 0.0
+        st.session_state.trade_amt_box = val
+    except: pass
 
 # --- Helpers ---
 def fmt_price(val):
@@ -167,14 +168,11 @@ crypto_list = ["BTC", "ETH", "SOL", "BNB", "DOGE", "XRP", "ADA", "AVAX"]
 us_stock_list = ["AAPL", "NVDA", "TSLA", "MSFT", "META", "AMZN", "GOOGL", "AMD"]
 tw_stock_dict = {"2330 台積電":"2330", "2454 聯發科":"2454", "2317 鴻海":"2317", "2603 長榮":"2603", "0050 元大台灣50":"0050"}
 
-# 選擇列表
+# Select Logic
 target_list = crypto_list if market == "加密貨幣" else (us_stock_list if market == "美股" else list(tw_stock_dict.keys()))
-
-# [修復] 使用 temp_symbol 加上 button，避免 session 衝突
 select_val = st.sidebar.selectbox("快速選擇", target_list)
 search_val = st.sidebar.text_input("代碼搜尋 (例如 2330)")
 
-# 決定最終標的字串
 raw_symbol = search_val.strip().upper() if search_val.strip() else select_val
 if market == "台股" and raw_symbol in tw_stock_dict: raw_symbol = tw_stock_dict[raw_symbol]
 
@@ -185,13 +183,12 @@ elif market == "台股":
     if final_symbol.isdigit(): final_symbol += ".TW"
     elif not final_symbol.endswith(".TW"): final_symbol += ".TW"
 
-# 側邊欄更新機制
-if st.sidebar.button("🚀 載入 K 線"):
+# Auto Update
+if final_symbol != st.session_state.chart_symbol:
     st.session_state.chart_symbol = final_symbol
     st.rerun()
 
 symbol = st.session_state.chart_symbol 
-
 interval_ui = st.sidebar.radio("週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 show_six = st.sidebar.checkbox("EMA 均線", True)
 show_bb = st.sidebar.checkbox("布林通道", False) 
@@ -201,25 +198,21 @@ show_fib = st.sidebar.checkbox("Fib 止盈", True)
 show_orders = st.sidebar.checkbox("圖表掛單", True)
 
 st.sidebar.markdown("---")
-with st.sidebar.expander("💰 錢包管理"):
-    # 安全讀取 balance
+with st.sidebar.expander("💰 錢包管理 (救命用)"):
+    # [防呆] 安全讀取 balance
     bal = st.session_state.get('balance', 0.0)
     st.caption(f"可用餘額: ${bal:,.2f}")
+    
     if st.button("🔄 重置為 1W U"):
         st.session_state.balance = 10000.0
         st.session_state.positions = []
         st.session_state.pending_orders = []
         st.session_state.history = []
-        save_data()
-        st.rerun()
-    if st.button("➕ 補血 +1W U"):
-        st.session_state.balance += 10000.0
-        save_data()
-        st.rerun()
-    if st.button("🧨 強制清空數據"): 
+        save_data(); st.rerun()
+        
+    if st.button("🧨 強制清空數據 (修復報錯)"): 
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
-        st.session_state.positions = []
-        st.rerun()
+        st.session_state.clear(); st.rerun()
 
 def get_params(ui_selection):
     if "15分鐘" in ui_selection: return "5d", "15m"
