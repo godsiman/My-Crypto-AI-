@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v58.0 穩健防護版)")
+st.markdown("### 🏦 全方位戰情室 AI (v59.0 終極穩定版)")
 
 # --- State Initialization ---
 KEYS_TO_INIT = {
@@ -31,7 +31,7 @@ for k, v in KEYS_TO_INIT.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# --- Persistence System ---
+# --- Persistence System (With Auto-Repair) ---
 DATA_FILE = "trade_data.json"
 
 def save_data():
@@ -53,7 +53,24 @@ def load_data():
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
                 st.session_state.balance = float(data.get("balance", 10000.0))
-                st.session_state.positions = data.get("positions", [])
+                
+                # [自動修復] 檢查並修復壞掉的倉位數據
+                raw_positions = data.get("positions", [])
+                valid_positions = []
+                for pos in raw_positions:
+                    try:
+                        # 確保關鍵欄位存在且為正確類型
+                        if 'symbol' in pos and 'entry' in pos and 'margin' in pos:
+                            pos['entry'] = float(pos['entry'])
+                            pos['margin'] = float(pos['margin'])
+                            pos['lev'] = float(pos.get('lev', 1))
+                            pos['tp'] = float(pos.get('tp', 0))
+                            pos['sl'] = float(pos.get('sl', 0))
+                            valid_positions.append(pos)
+                    except:
+                        continue # 捨棄無法修復的壞資料
+                
+                st.session_state.positions = valid_positions
                 st.session_state.pending_orders = data.get("pending_orders", [])
                 st.session_state.history = data.get("history", [])
         except:
@@ -208,7 +225,6 @@ with st.sidebar.expander("💰 錢包管理 (修復工具)"):
         st.session_state.balance += 10000.0
         save_data()
         st.rerun()
-    # 新增：救命按鈕，如果資料壞掉導致當機，按這個
     if st.button("🧨 強制清空數據 (救命用)", type="primary"):
         if os.path.exists(DATA_FILE):
             os.remove(DATA_FILE)
@@ -340,8 +356,16 @@ else: df_chart = df_d
 
 if df_chart is not None and not df_chart.empty:
     last = df_chart.iloc[-1]; curr_price = float(last['Close'])
+    
+    # [新增] 頂部行情看板
+    st.markdown(f"""
+    <h1 style='text-align: center; font-size: 40px;'>
+        {symbol} <span style='color: {"#00C853" if df_chart['Close'].iloc[-1] >= df_chart['Open'].iloc[-1] else "#FF3D00"}'>
+        ${curr_price:,.2f}</span>
+    </h1>
+    """, unsafe_allow_html=True)
 
-    # Pending Orders
+    # Pending Orders Logic
     pending_updated = False
     if st.session_state.pending_orders:
         for i in reversed(range(len(st.session_state.pending_orders))):
@@ -361,12 +385,10 @@ if df_chart is not None and not df_chart.empty:
     st.session_state.ai_sl = mtf_res['sl']
 
     # --- Dashboard ---
-    st.markdown("### 🧠 全時區戰略雷達")
     c_rad1, c_rad2, c_rad3 = st.columns([1.5, 1, 1.5])
     with c_rad1:
         color = "green" if mtf_res['score'] > 0 else "red" if mtf_res['score'] < 0 else "gray"
         st.markdown(f"#### 穩健建議: :{color}[{mtf_res['dir']}]")
-        st.caption(f"評分: {mtf_res['score']} / 10")
         dots = "".join(["🟢 " if t==1 else "🔴 " if t==-1 else "⚪ " for t in mtf_res['trends']])
         st.write(f"趨勢: {dots} (月|週|日|時)")
     with c_rad2:
@@ -385,6 +407,7 @@ if df_chart is not None and not df_chart.empty:
     indicator_mode = st.radio("副圖", ["RSI", "MACD"], horizontal=True, label_visibility="collapsed")
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.15, 0.25], subplot_titles=("價格", "成交量", indicator_mode))
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
+    
     if show_six:
         fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], name='EMA20', line=dict(width=1, color='yellow')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], name='EMA60', line=dict(width=1, color='cyan')), row=1, col=1)
@@ -430,23 +453,23 @@ if df_chart is not None and not df_chart.empty:
     total_unrealized = 0; total_margin = 0
     if st.session_state.positions:
         for pos in st.session_state.positions:
-            # [防呆機制] 確保資料完整性，防止崩潰
             try:
                 lp = get_current_price(pos['symbol'])
                 if lp:
                     d = 1 if pos['type'] == 'Long' else -1
-                    # 強制轉型 float 避免字串運算錯誤
-                    margin_val = float(pos['margin'])
-                    entry_val = float(pos['entry'])
-                    lev_val = float(pos['lev'])
+                    # Safe Float Conversion
+                    margin = float(pos['margin'])
+                    entry = float(pos['entry'])
+                    lev = float(pos['lev'])
                     
-                    u_pnl = margin_val * (((lp - entry_val) / entry_val) * lev_val * d)
+                    u_pnl = margin * (((lp - entry) / entry) * lev * d)
                     total_unrealized += u_pnl
-                    total_margin += margin_val
-            except Exception:
-                continue # 跳過錯誤數據
+                    total_margin += margin
+            except: continue
 
     equity = st.session_state.balance + total_margin + total_unrealized
+    
+    # Liquidation Check
     if equity <= 0 and st.session_state.positions:
         st.error("💀 帳戶爆倉！所有倉位已強制平倉。")
         st.session_state.positions = []
@@ -456,19 +479,16 @@ if df_chart is not None and not df_chart.empty:
         st.rerun()
 
     c_w1, c_w2, c_w3 = st.columns(3)
-    c_w1.metric("💰 權益", f"${equity:,.2f}")
-    c_w2.metric("💵 餘額", f"${st.session_state.balance:,.2f}")
-    c_w3.metric("🔥 盈虧", f"${total_unrealized:+.2f} U", delta_color="normal")
+    c_w1.metric("💰 權益 (Equity)", f"${equity:,.2f}")
+    c_w2.metric("💵 可用餘額", f"${st.session_state.balance:,.2f}")
+    c_w3.metric("🔥 盈虧 (PnL)", f"${total_unrealized:+.2f} U", delta_color="normal")
 
     tab_trade, tab_ord, tab_hist = st.tabs(["🚀 下單", "📋 委託", "📜 歷史"])
     
     with tab_trade:
-        st.metric(label=f"💎 {symbol} 現價", value=fmt_price(curr_price))
-        
         order_type = st.radio("類型", ["⚡ 市價", "⏱️ 掛單"], horizontal=True, label_visibility="collapsed")
         c1, c2 = st.columns(2)
         side = c1.selectbox("方向", ["🟢 做多", "🔴 做空"], index=0 if mtf_res['score']>0 else 1)
-        # [修復] 槓桿上限到 200
         lev = c2.number_input("槓桿", min_value=1, max_value=200, value=20)
         
         def_p = curr_price
@@ -481,7 +501,6 @@ if df_chart is not None and not df_chart.empty:
         if c_p3.button("75%", use_container_width=True, on_click=set_amt, args=(0.75,)): pass
         if c_p4.button("Max", use_container_width=True, on_click=set_amt, args=(1.00,)): pass
         
-        # [關鍵] 綁定 trade_amt_input_val
         amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_input_val), min_value=1.0, key="trade_amt_input_val_widget", on_change=lambda: st.session_state.update({"trade_amt_input_val": st.session_state.trade_amt_input_val_widget}))
         
         with st.expander("止盈止損 (預設 AI 建議)", expanded=True):
@@ -515,23 +534,19 @@ if df_chart is not None and not df_chart.empty:
     if not st.session_state.positions: st.info("目前無持倉")
     else:
         for i, pos in enumerate(st.session_state.positions):
-            # [防呆] 確保迴圈內不崩潰
             try:
                 live = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
                 if live:
                     d = 1 if pos['type'] == 'Long' else -1
-                    
                     # 強制轉型
-                    margin_val = float(pos['margin'])
-                    entry_val = float(pos['entry'])
-                    lev_val = float(pos['lev'])
+                    margin = float(pos['margin'])
+                    entry = float(pos['entry'])
+                    lev = float(pos['lev'])
                     
-                    u_pnl = margin_val * (((live - entry_val) / entry_val) * lev_val * d)
-                    pnl_pct = (((live - entry_val) / entry_val) * lev_val * d) * 100
+                    u_pnl = margin * (((live - entry) / entry) * lev * d)
+                    pnl_pct = (((live - entry) / entry) * lev * d) * 100
                     
-                    liq = entry_val*(1 - 1/lev_val) if pos['type']=='Long' else entry_val*(1 + 1/lev_val)
-                    
-                    # Trigger logic with safe types
+                    liq = entry*(1 - 1/lev) if pos['type']=='Long' else entry*(1 + 1/lev)
                     if (pos['type']=='Long' and live<=liq) or (pos['type']=='Short' and live>=liq): close_position(i, 100, "💀 爆倉", live); st.rerun()
                     elif pos.get('tp',0)>0 and ((pos['type']=='Long' and live>=pos['tp']) or (pos['type']=='Short' and live<=pos['tp'])): close_position(i, 100, "🎯 止盈", live); st.rerun()
                     elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live<=pos['sl']) or (pos['type']=='Short' and live>=pos['sl'])): close_position(i, 100, "🛡️ 止損", live); st.rerun()
@@ -542,11 +557,9 @@ if df_chart is not None and not df_chart.empty:
 
                     clr = "#00C853" if u_pnl >= 0 else "#FF3D00"
                     icon = "🟢" if pos['type'] == 'Long' else "🔴"
-                    st.markdown(f"""<div style="background-color: #262730; padding: 12px; border-radius: 8px; border-left: 5px solid {clr}; margin-bottom: 8px;"><div style="display: flex; justify-content: space-between; font-size: 13px; color: #ccc;"><span>{icon} {pos['type']} x{lev_val:.0f} <span style="color:#888;">(本金: {margin_val:.0f} U)</span></span><span>🕒 {pos.get('time','--')}</span></div><div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 5px;"><div><div style="font-size: 12px; color: #aaa;">未結盈虧 (U)</div><div style="font-size: 18px; font-weight: bold; color: {clr};">{u_pnl:+.2f} U</div></div><div style="text-align: right;"><div style="font-size: 12px; color: #aaa;">回報率 (%)</div><div style="font-size: 18px; font-weight: bold; color: {clr};">{pnl_pct:+.2f}%</div></div></div><div style="margin-top: 8px; font-size: 12px; color: #888; display: flex; justify-content: space-between;"><span>開: {fmt_price(entry_val)}</span><span>現: {fmt_price(live)}</span></div></div>""", unsafe_allow_html=True)
+                    st.markdown(f"""<div style="background-color: #262730; padding: 12px; border-radius: 8px; border-left: 5px solid {clr}; margin-bottom: 8px;"><div style="display: flex; justify-content: space-between; font-size: 13px; color: #ccc;"><span>{icon} {pos['type']} x{lev:.0f} <span style="color:#888;">(本金: {margin:.0f} U)</span></span><span>🕒 {pos.get('time','--')}</span></div><div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 5px;"><div><div style="font-size: 12px; color: #aaa;">未結盈虧 (U)</div><div style="font-size: 18px; font-weight: bold; color: {clr};">{u_pnl:+.2f} U</div></div><div style="text-align: right;"><div style="font-size: 12px; color: #aaa;">回報率 (%)</div><div style="font-size: 18px; font-weight: bold; color: {clr};">{pnl_pct:+.2f}%</div></div></div><div style="margin-top: 8px; font-size: 12px; color: #888; display: flex; justify-content: space-between;"><span>開: {fmt_price(entry)}</span><span>現: {fmt_price(live)}</span></div></div>""", unsafe_allow_html=True)
                     if st.button("⚙️ 管理 / 平倉", key=f"m_{i}", use_container_width=True): manage_position_dialog(i, pos, live)
                     st.markdown("---")
-            except Exception:
-                st.error("此倉位數據異常，請嘗試重置")
-                continue
+            except Exception: continue
 
 else: st.error(f"❌ 無法讀取 {symbol}")
