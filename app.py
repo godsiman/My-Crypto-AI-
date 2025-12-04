@@ -1,9 +1,3 @@
-# 1. 安裝
-!pip install -q streamlit yfinance plotly pandas_ta scipy
-
-# 2. 寫入 v28.1 輕量穩定版 (無存檔，最快啟動)
-import os
-code = """
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -13,8 +7,9 @@ from plotly.subplots import make_subplots
 from scipy.signal import argrelextrema
 from datetime import datetime
 
-st.set_page_config(page_title="全方位戰情室 v28.1", layout="wide")
-st.title("🛡️ 全方位戰情室 AI (v28.1 輕量穩定版)")
+# --- 設定頁面 ---
+st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
+st.title("🛡️ 全方位戰情室 AI (Streamlit Cloud 專用版)")
 
 # --- Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
@@ -110,6 +105,7 @@ def get_data(symbol, period, interval, ui_selection):
         return df
     except: return None
 
+# 指標函數
 def calculate_zigzag(df, depth=12):
     try:
         df['max_roll'] = df['High'].rolling(window=depth, center=True).max()
@@ -201,6 +197,7 @@ def generate_ai_report(symbol, price, score, struct, six, fvg, div, rsi_txt, buy
     else: report += f"\\n🛒 **建議空點**: **{entry_zone}**\\n🎯 **止盈 TP1**: **${tp1:,.2f}**\\n🛡️ **止損 SL**: **${sell_sl:,.2f}**"
     return report
 
+# --- 🏦 平倉/減倉函數 ---
 def close_position(exit_price, percentage=100, reason="手動平倉"):
     pos = st.session_state.position
     if not pos: return 0, 0
@@ -231,7 +228,7 @@ if df is not None:
     curr_price = last['Close']
     
     # ---------------------------
-    # 🏦 模擬交易所 (Sidebar)
+    # 🏦 華爾街操盤手專區 (Sidebar)
     # ---------------------------
     st.sidebar.markdown("---")
     with st.sidebar.expander("🏦 模擬交易所 (Exchange)", expanded=True):
@@ -266,12 +263,10 @@ if df is not None:
                 direction = 1 if pos['type'] == 'Long' else -1
                 pnl_pct = ((curr_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
                 pnl_usdt = pos['margin'] * (pnl_pct / 100)
-                
-                if pos['type'] == 'Long': liq_price = pos['entry'] * (1 - 1/pos['lev'])
-                else: liq_price = pos['entry'] * (1 + 1/pos['lev'])
+                liq = pos['entry'] * (1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry'] * (1 + 1/pos['lev'])
                 
                 close_reason = None
-                if (pos['type'] == 'Long' and curr_price <= liq_price) or (pos['type'] == 'Short' and curr_price >= liq_price): close_reason = "💀 爆倉"
+                if (pos['type'] == 'Long' and curr_price <= liq) or (pos['type'] == 'Short' and curr_price >= liq): close_reason = "💀 爆倉"
                 elif pos['tp'] > 0 and ((pos['type'] == 'Long' and curr_price >= pos['tp']) or (pos['type'] == 'Short' and curr_price <= pos['tp'])): close_reason = "🎯 止盈觸發"
                 elif pos['sl'] > 0 and ((pos['type'] == 'Long' and curr_price <= pos['sl']) or (pos['type'] == 'Short' and curr_price >= pos['sl'])): close_reason = "🛡️ 止損觸發"
                 
@@ -282,7 +277,7 @@ if df is not None:
                 st.write(f"💵 本金: **${pos['margin']:.2f}** | 均價: **${pos['entry']:.2f}**")
                 c1, c2 = st.columns(2)
                 c1.metric("未實現損益", f"${pnl_usdt:.2f}", f"{pnl_pct:.2f}%")
-                c2.write(f"💀 爆倉: {liq_price:.2f}")
+                c2.write(f"💀 爆倉: {liq:.2f}")
                 
                 with st.expander("📝 修改訂單 / 平倉"):
                     new_tp = st.number_input("修改 TP", value=pos['tp'])
@@ -295,14 +290,14 @@ if df is not None:
                     close_ratio = st.slider("平倉比例 %", 0, 100, 100, 25)
                     if st.button(f"執行平倉 {close_ratio}%", type="primary"): close_position(curr_price, close_ratio, "手動平倉"); st.rerun()
             else:
-                st.warning(f"目前持有 {pos['symbol']} 倉位，暫停監控。")
+                st.warning(f"目前持有 {pos['symbol']} 倉位。")
 
         if st.session_state.history:
             with st.sidebar.expander("📜 歷史交易"):
                 hist_df = pd.DataFrame(st.session_state.history[::-1])
                 st.dataframe(hist_df[['幣種', '獲利%', '損益(U)', '時間']], hide_index=True)
 
-    # --- 主分析 ---
+    # --- 主分析邏輯 ---
     pivots = calculate_zigzag(df)
     bull_fvg, bear_fvg = calculate_fvg(df)
     bull_div, bear_div = detect_div(df)
@@ -394,9 +389,6 @@ else:
 with open("app.py", "w") as f:
     f.write(code)
 
-# 3. 啟動
-print("正在啟動 v28.1 輕量穩定版...")
-get_ipython().system_raw('streamlit run app.py &')
-!wget -q -nc https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-!chmod +x cloudflared-linux-amd64
-!./cloudflared-linux-amd64 tunnel --url http://localhost:8501
+# 3. 第二步：上傳 GitHub
+print("✅ Streamlit Cloud 部署文件 (app.py) 已生成！")
+print("請將此 app.py 上傳至 GitHub 即可解決 !pip syntax error。")
