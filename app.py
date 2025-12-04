@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v87.1)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v87.1 永久存檔版)")
+st.set_page_config(page_title="全方位戰情室 AI (v88.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v88.0 歷史戰績版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -20,7 +20,7 @@ class NpEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray): return obj.tolist()
         return super(NpEncoder, self).default(obj)
 
-# --- Persistence (固定檔名，防止更新後紀錄消失) ---
+# --- Persistence ---
 DATA_FILE = "trade_data_live.json"
 
 def save_data():
@@ -37,7 +37,6 @@ def save_data():
         st.error(f"存檔失敗: {e}")
 
 def load_data():
-    # 初始化 Session State
     if 'init_done' not in st.session_state:
         st.session_state.balance = 10000.0
         st.session_state.positions = []
@@ -49,7 +48,6 @@ def load_data():
         st.session_state.symbol_input = "" 
         st.session_state.init_done = True
 
-    # 嘗試讀取檔案
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -59,7 +57,6 @@ def load_data():
                 st.session_state.pending_orders = data.get("pending_orders", [])
                 st.session_state.history = data.get("history", [])
         except:
-            # 讀取失敗時保持預設值 (不重置，避免覆蓋錯誤)
             pass
 
 load_data()
@@ -92,51 +89,32 @@ def get_locked_funds():
     for o in st.session_state.pending_orders: locked += float(o.get('margin', 0.0))
     return locked
 
-# --- Indicator Calculation ---
+# --- Indicators ---
 def calculate_indicators(df):
     if df is None or df.empty: return df
     df = df.copy()
-    
-    # EMA7 (短線攻擊)
     df['EMA7'] = df['Close'].ewm(span=7).mean()
-    # 均線
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA60'] = df['Close'].ewm(span=60).mean()
-    
-    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
     loss = (-delta.where(delta < 0, 0)).fillna(0)
     rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
     df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # MACD
     exp12 = df['Close'].ewm(span=12, adjust=False).mean()
     exp26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = exp12 - exp26
     df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['Hist'] = df['MACD'] - df['Signal']
-    
-    # BB
     df['MA20'] = df['Close'].rolling(20).mean()
     df['STD20'] = df['Close'].rolling(20).std()
     df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2)
     df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
-    
-    # KD
-    low_min = df['Low'].rolling(9).min()
-    high_max = df['High'].rolling(9).max()
-    df['RSV'] = (df['Close'] - low_min) / (high_max - low_min) * 100
-    df['K'] = df['RSV'].ewm(com=2).mean()
-    df['D'] = df['K'].ewm(com=2).mean()
-    
-    # ATR
     df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
     df['ATR'] = df['TR'].rolling(14).mean()
-    
     return df
 
-# --- Chart Data Fetcher ---
+# --- Chart Data ---
 def get_chart_data(symbol, interval_ui):
     if interval_ui == "15分鐘": period, interval = "1mo", "15m"
     elif interval_ui == "1小時": period, interval = "6mo", "1h"
@@ -156,11 +134,9 @@ def get_chart_data(symbol, interval_ui):
 # --- Hybrid Strategy ---
 @st.cache_data(ttl=120)
 def get_hybrid_strategy(symbol, current_interval_ui):
-    # 1. Macro
     macro_intervals = {"M": ("1mo","5y"), "W": ("1wk","2y"), "D": ("1d","1y")}
     macro_trends = {}
     macro_score = 0
-    
     for tf, (inter, per) in macro_intervals.items():
         try:
             df_m = yf.Ticker(symbol).history(period=per, interval=inter)
@@ -173,20 +149,13 @@ def get_hybrid_strategy(symbol, current_interval_ui):
                 else:
                     macro_trends[tf] = "空頭"
                     macro_score -= 1
-        except:
-            macro_trends[tf] = "未知"
+        except: macro_trends[tf] = "未知"
 
-    # 2. Micro
     df_curr = get_chart_data(symbol, current_interval_ui)
     if df_curr is None or len(df_curr) < 30: return None
+    last = df_curr.iloc[-1]; prev = df_curr.iloc[-2]
+    micro_score = 0; signals = []
     
-    last = df_curr.iloc[-1]
-    prev = df_curr.iloc[-2]
-    
-    micro_score = 0
-    signals = []
-    
-    # EMA7 短線攻擊
     if last['Close'] > last['EMA7']:
         signals.append("⚡ 站上短線 (EMA7) - 攻擊態勢")
         micro_score += 1.5
@@ -194,7 +163,6 @@ def get_hybrid_strategy(symbol, current_interval_ui):
         signals.append("⚠️ 跌破短線 (EMA7) - 短線轉弱")
         micro_score -= 1.5
 
-    # 均線排列
     if last['Close'] > last['EMA20'] > last['EMA60']:
         signals.append("✅ 均線多頭排列")
         micro_score += 2
@@ -202,7 +170,6 @@ def get_hybrid_strategy(symbol, current_interval_ui):
         signals.append("🔻 均線空頭排列")
         micro_score -= 2
         
-    # MACD
     if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
         signals.append("🚀 MACD 黃金交叉")
         micro_score += 2
@@ -210,14 +177,6 @@ def get_hybrid_strategy(symbol, current_interval_ui):
         signals.append("💀 MACD 死亡交叉")
         micro_score -= 2
         
-    # RSI Divergence
-    recent_low = df_curr['Close'].tail(15).min()
-    recent_rsi_low = df_curr['RSI'].tail(15).min()
-    if last['Close'] <= recent_low and last['RSI'] > recent_rsi_low + 5:
-        signals.append("💎 RSI 底背離 (潛在反轉)")
-        micro_score += 3
-    
-    # BB
     if last['Close'] > last['BB_Upper']:
         signals.append("🔥 突破布林上軌")
         micro_score += 1
@@ -225,39 +184,21 @@ def get_hybrid_strategy(symbol, current_interval_ui):
         signals.append("❄️ 跌破布林下軌")
         micro_score -= 1
 
-    # 3. Final Score
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
-    
     direction = "觀望"
     if final_score >= 1.5: direction = "強力做多 (Strong Buy)"
     elif final_score >= 0.5: direction = "嘗試做多 (Buy)"
     elif final_score <= -1.5: direction = "強力做空 (Strong Sell)"
     elif final_score <= -0.5: direction = "嘗試做空 (Sell)"
     
-    # 4. Levels
     curr_price = last['Close']
     atr = last.get('ATR', curr_price * 0.02)
-    
     if final_score > 0:
-        entry = curr_price
-        tp = entry + (atr * 2.5)
-        sl = entry - (atr * 1.5)
+        entry = curr_price; tp = entry + (atr * 2.5); sl = entry - (atr * 1.5)
     else:
-        entry = curr_price
-        tp = entry - (atr * 2.5)
-        sl = entry + (atr * 1.5)
+        entry = curr_price; tp = entry - (atr * 2.5); sl = entry + (atr * 1.5)
 
-    return {
-        "direction": direction,
-        "score": final_score,
-        "macro_trends": macro_trends,
-        "signals": signals,
-        "entry": entry,
-        "tp": tp,
-        "sl": sl,
-        "df": df_curr,
-        "last_price": curr_price
-    }
+    return {"direction": direction, "score": final_score, "macro_trends": macro_trends, "signals": signals, "entry": entry, "tp": tp, "sl": sl, "df": df_curr, "last_price": curr_price}
 
 # --- Callbacks ---
 def on_select_change():
@@ -303,8 +244,7 @@ def manage_position_dialog(i, pos, current_price):
             st.rerun()
     with tab_tpsl:
         mode = st.radio("設定模式", ["價格", "ROE %"], horizontal=True, key=f"m_mode_{i}")
-        new_tp = float(pos.get('tp', 0))
-        new_sl = float(pos.get('sl', 0))
+        new_tp = float(pos.get('tp', 0)); new_sl = float(pos.get('sl', 0))
         if mode == "價格":
             c1, c2 = st.columns(2)
             new_tp = c1.number_input("TP 價格", value=new_tp, key=f"ntp_p_{i}", format="%.6f")
@@ -339,13 +279,17 @@ def close_position(pos_index, percentage, reason, exit_price):
     entry = float(pos.get('entry', 1))
     lev = float(pos.get('lev', 1))
     pnl = close_margin * (((exit_price - entry) / entry) * lev * direction)
+    
+    # [歷史紀錄升級] 計算 ROE% 寫入歷史
+    roe_pct = (pnl / close_margin) * 100 if close_margin > 0 else 0.0
+    
     st.session_state.balance += (close_margin + pnl)
     st.session_state.history.append({
         "時間": datetime.now().strftime("%m-%d %H:%M"),
         "幣種": pos.get('symbol'),
         "動作": f"平{percentage}%",
         "價格": exit_price,
-        "盈虧": round(pnl, 2),
+        "盈虧": f"{pnl:+.2f} ({roe_pct:+.2f}%)", # 寫入格式化字串
         "原因": reason
     })
     if percentage == 100: st.session_state.positions.pop(pos_index)
@@ -460,7 +404,7 @@ if ai_res:
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
     
-    # [新增] EMA7 短線 (白色)
+    # EMA7
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1.5), name='EMA7 (短線)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
@@ -479,7 +423,8 @@ if ai_res:
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Trading ---
-    tab_trade, tab_orders = st.tabs(["⚡ 下單交易", "📋 訂單管理"])
+    # [新增] 第三個分頁：歷史訂單
+    tab_trade, tab_orders, tab_history = st.tabs(["⚡ 下單交易", "📋 訂單管理", "📜 歷史訂單"])
     
     with tab_trade:
         col_ctrl, col_info = st.columns([2, 1])
@@ -492,9 +437,7 @@ if ai_res:
             
             with st.expander("進階 (止盈止損)", expanded=True):
                 mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
-                rec_tp = ai_res['tp']
-                rec_sl = ai_res['sl']
-                
+                rec_tp = ai_res['tp']; rec_sl = ai_res['sl']
                 if mode == "價格":
                     t_tp = st.number_input("止盈價格", value=float(rec_tp), format="%.6f")
                     t_sl = st.number_input("止損價格", value=float(rec_sl), format="%.6f")
@@ -577,6 +520,18 @@ if ai_res:
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
                 if c_cnl.button("❌", key=f"cnl_{i}"): cancel_order(i); st.rerun()
                 st.divider()
+
+    # [新增] 歷史訂單頁面
+    with tab_history:
+        st.subheader("📜 歷史戰績")
+        if not st.session_state.history:
+            st.info("暫無歷史紀錄")
+        else:
+            # 將歷史紀錄轉換為 DataFrame 顯示，更美觀
+            hist_df = pd.DataFrame(st.session_state.history)
+            # 反轉順序，讓最新的在上面
+            hist_df = hist_df.iloc[::-1]
+            st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
 else:
     st.error(f"❌ 無法讀取 {symbol}，請確認代碼或網路連線。")
