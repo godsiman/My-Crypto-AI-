@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v53.0 資金按鈕終極修復版)")
+st.markdown("### 🏦 全方位戰情室 AI (v54.0 真實資產版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -47,17 +47,19 @@ if 'data_loaded' not in st.session_state:
     load_data()
     st.session_state.data_loaded = True
 
-# [關鍵] 初始化輸入框的綁定變數
+# 初始化輸入框變數
 if 'trade_amt_box' not in st.session_state: 
     st.session_state.trade_amt_box = 1000.0
 
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 if 'market' not in st.session_state: st.session_state.market = "加密貨幣"
 
-# --- [關鍵修復] 資金按鈕回調 ---
+# --- [關鍵] 資金按鈕回調 ---
 def set_amt(ratio):
-    # 直接修改 widget 的 key，強制 UI 更新
-    st.session_state.trade_amt_box = float(st.session_state.balance * ratio)
+    # 計算當前可用餘額的比例
+    val = float(st.session_state.balance * ratio)
+    # 強制更新輸入框的 key
+    st.session_state.trade_amt_box = val
 
 # --- Helpers ---
 def fmt_price(val):
@@ -190,7 +192,7 @@ show_orders = st.sidebar.checkbox("圖表掛單", value=True)
 # --- 錢包管理 ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("💰 錢包管理"):
-    st.caption(f"餘額: ${st.session_state.balance:,.2f}")
+    st.caption(f"可用餘額: ${st.session_state.balance:,.2f}")
     if st.button("🔄 重置為 1W U"):
         st.session_state.balance = 10000.0
         st.session_state.positions = []; st.session_state.pending_orders = []; st.session_state.history = []
@@ -484,7 +486,6 @@ if df is not None and not df.empty:
         fig.add_trace(go.Scatter(x=gc_data.index, y=gc_data['MACD'], mode='markers', name='金叉', marker=dict(symbol='triangle-up', color='#00FF00', size=10)), row=3, col=1)
         fig.add_trace(go.Scatter(x=dc_data.index, y=dc_data['MACD'], mode='markers', name='死叉', marker=dict(symbol='triangle-down', color='#FF0000', size=10)), row=3, col=1)
 
-    # Chart Config
     fig.update_layout(
         template="plotly_dark", 
         height=700, 
@@ -503,17 +504,34 @@ if df is not None and not df.empty:
 
     # --- Panel ---
     st.divider()
+    
+    # 1. 預先計算未結盈虧和權益
     total_unrealized = 0
+    total_margin_used = 0
     if st.session_state.positions:
         for pos in st.session_state.positions:
             lp = get_current_price(pos['symbol'])
             if lp:
                 d = 1 if pos['type'] == 'Long' else -1
                 total_unrealized += pos['margin'] * (((lp - pos['entry']) / pos['entry']) * pos['lev'] * d)
+                total_margin_used += pos['margin']
     
-    col_w1, col_w2 = st.columns(2)
-    col_w1.metric("💰 總資產", f"${st.session_state.balance:,.2f}")
-    col_w2.metric("🔥 未結盈虧", f"${total_unrealized:+.2f} U", delta_color="normal")
+    # [關鍵修正] 權益 = 可用餘額 + 佔用保證金 + 未結盈虧
+    equity = st.session_state.balance + total_margin_used + total_unrealized
+    
+    # [破產保護]
+    if equity <= 0:
+        st.error("💀 帳戶權益歸零！已強制平倉所有部位！")
+        st.session_state.positions = []
+        st.session_state.pending_orders = []
+        st.session_state.balance = 0
+        save_data()
+        st.rerun()
+
+    col_w1, col_w2, col_w3 = st.columns(3)
+    col_w1.metric("💰 帳戶權益 (Equity)", f"${equity:,.2f}")
+    col_w2.metric("💵 可用餘額", f"${st.session_state.balance:,.2f}")
+    col_w3.metric("🔥 未結盈虧", f"${total_unrealized:+.2f} U", delta_color="normal")
 
     tab_trade, tab_ord, tab_hist = st.tabs(["🚀 下單", "📋 委託單", "📜 歷史"])
     
@@ -535,7 +553,7 @@ if df is not None and not df.empty:
         if c_p3.button("75%", use_container_width=True, on_click=set_amt, args=(0.75,)): pass
         if c_p4.button("Max", use_container_width=True, on_click=set_amt, args=(1.00,)): pass
 
-        # [關鍵] 使用 key 綁定 session_state
+        # [關鍵] 綁定 key 確保更新
         amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_box), min_value=1.0, key="trade_amt_box")
         
         with st.expander("止盈止損 (TP/SL)"):
