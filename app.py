@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v82.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v82.0 倉位管理增強版)")
+st.set_page_config(page_title="全方位戰情室 AI (v83.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v83.0 自動爆倉版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v82.json"
+DATA_FILE = "trade_data_v83.json"
 
 def save_data():
     data = {
@@ -176,12 +176,10 @@ def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
     st.session_state.symbol_input = "" 
 
-# --- Dialogs (倉位管理 - 已升級) ---
+# --- Dialogs ---
 @st.dialog("⚡ 倉位管理")
 def manage_position_dialog(i, pos, current_price):
     st.markdown(f"**{pos.get('symbol','--')}**")
-    
-    # 讀取持倉基礎數據
     try:
         entry = float(pos.get('entry', 0))
         lev = float(pos.get('lev', 1))
@@ -189,7 +187,6 @@ def manage_position_dialog(i, pos, current_price):
         pos_type = pos.get('type', 'Long')
         d = 1 if pos_type == 'Long' else -1
         
-        # 計算當前盈虧
         u_pnl = margin * (((current_price - entry) / entry) * lev * d)
         roe_pct = (u_pnl / margin) * 100 if margin > 0 else 0.0
         
@@ -207,7 +204,6 @@ def manage_position_dialog(i, pos, current_price):
             st.rerun()
 
     with tab_tpsl:
-        # [重點] 新增單位切換
         mode = st.radio("設定模式", ["價格", "ROE %"], horizontal=True, key=f"m_mode_{i}")
         
         current_tp = float(pos.get('tp', 0))
@@ -221,32 +217,25 @@ def manage_position_dialog(i, pos, current_price):
             new_tp = c1.number_input("TP 價格", value=current_tp, key=f"ntp_p_{i}", format="%.6f")
             new_sl = c2.number_input("SL 價格", value=current_sl, key=f"nsl_p_{i}", format="%.6f")
         else:
-            # ROE 模式輸入
             c1, c2 = st.columns(2)
             roe_tp = c1.number_input("止盈 % (例: 50)", value=0.0, key=f"ntp_r_{i}")
             roe_sl = c2.number_input("止損 % (例: 20)", value=0.0, key=f"nsl_r_{i}")
             
-            # 即時試算價格
             calc_tp = 0.0
             calc_sl = 0.0
             direction = 1 if pos_type == 'Long' else -1
             
             if roe_tp > 0:
-                # 公式: Entry * (1 + (ROE%/100)/Lev * Dir)
                 calc_tp = entry * (1 + (roe_tp / 100.0) / lev * direction)
                 c1.caption(f"預估: {fmt_price(calc_tp)}")
-                new_tp = calc_tp # 準備更新
+                new_tp = calc_tp
             
             if roe_sl > 0:
-                # 止損代表虧損，所以 PnL 是負的，公式要用減號 (對於 Long)
-                # Long SL: Entry * (1 - (ROE%/100)/Lev)
-                # Short SL: Entry * (1 + (ROE%/100)/Lev)
                 calc_sl = entry * (1 - (roe_sl / 100.0) / lev * direction)
                 c2.caption(f"預估: {fmt_price(calc_sl)}")
-                new_sl = calc_sl # 準備更新
+                new_sl = calc_sl
 
         if st.button("更新設定", key=f"btn_u_{i}", use_container_width=True):
-            # 無論是用價格還是ROE算出來的價格，最終都存入價格
             st.session_state.positions[i]['tp'] = new_tp
             st.session_state.positions[i]['sl'] = new_sl
             save_data()
@@ -266,7 +255,7 @@ def close_position(pos_index, percentage, reason, exit_price):
     lev = float(pos.get('lev', 1))
     
     pnl = close_margin * (((exit_price - entry) / entry) * lev * direction)
-    st.session_state.balance += pnl
+    st.session_state.balance += (close_margin + pnl) # 釋放保證金 + 盈虧
     
     st.session_state.history.append({
         "時間": datetime.now().strftime("%m-%d %H:%M"),
@@ -476,6 +465,13 @@ if ai_res and df_chart is not None:
                     d = 1 if pos['type']=='Long' else -1
                     pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
                     roe_pct = (pnl / pos['margin']) * 100
+                    
+                    # [新增] 自動爆倉檢測
+                    if roe_pct <= -100.0:
+                        close_position(i, 100, "💀 爆倉 (-100%)", p_cur)
+                        st.toast(f"⚠️ {p_sym} 已爆倉！保證金歸零")
+                        st.rerun()
+
                     clr = "#00C853" if pnl >= 0 else "#FF3D00"
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
