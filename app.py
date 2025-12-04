@@ -9,9 +9,10 @@ import json
 import os
 
 # --- Page setup ---
-# [確認] 標題為 v77.0
-st.set_page_config(page_title="全方位戰情室 AI (v77.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v77.0 顯示修復版)")
+st.set_page_config(page_title="全方位戰情室 AI (v78.0)", layout="wide", page_icon="🏦")
+
+# [新排版] 標題區
+st.markdown("### 🏦 全方位戰情室 AI (v78.0 排版重構版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -22,7 +23,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v77.json"
+DATA_FILE = "trade_data_v78.json"
 
 def save_data():
     data = {
@@ -67,6 +68,7 @@ def fmt_price(val):
     if val is None: return "N/A"
     try:
         valf = float(val)
+        # [精度] 小於 1.0 顯示 6 位小數
         if valf < 1.0: return f"${valf:.6f}"
         elif valf < 20: return f"${valf:.4f}"
         else: return f"${valf:,.2f}"
@@ -167,7 +169,6 @@ def on_input_change():
         if st.session_state.market == "加密貨幣" and "-" not in val and "USD" not in val: val += "-USD"
         st.session_state.chart_symbol = val
 
-# [防崩潰] 導航必須用這個函數
 def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
     st.session_state.symbol_input = "" 
@@ -284,37 +285,20 @@ if ai_res and df_chart is not None:
         rec_tp = rec_entry - (atr * 3)
         rec_sl = rec_entry + (atr * 1.5)
 
-    # --- Header ---
-    c1, c2, c3 = st.columns([2, 1, 1])
-    is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
-    p_color = "#00C853" if is_up else "#FF3D00"
+    # --- [全新排版] 使用原生 Columns + Metric，確保字體完整不被切 ---
+    st.title(f"{symbol}") # 超大標題
     
+    # 決定價格顯示格式
     if curr_price < 1.0:
-        price_display = f"${curr_price:.6f}"
+        price_val = f"${curr_price:.6f}"
     else:
-        price_display = f"${curr_price:,.2f}"
+        price_val = f"${curr_price:,.2f}"
 
-    # [這裡] CSS 終極修復：強制設定行高與容器樣式
-    # line-height: 1.5 確保字體上下不被切斷
-    # white-space: nowrap 防止換行
-    c1.markdown(f"""
-    <div style='
-        display: flex; 
-        align-items: center; 
-        line-height: 1.5; 
-        padding-top: 5px; 
-        padding-bottom: 5px;
-        white-space: nowrap;
-        overflow: visible;
-    '>
-        <span style='font-size: 40px; font-weight: bold; margin-right: 15px; color: #ffffff;'>{symbol}</span>
-        <span style='font-size: 30px; color: #cccccc; margin-right: 15px;'>({interval_ui})</span>
-        <span style='font-size: 42px; color: {p_color}; font-weight: bold;'>{price_display}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    c2.metric("可用餘額", f"${st.session_state.balance:,.2f}")
-    
+    # 計算漲跌顏色 (用於 Metric)
+    is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
+    delta_color = "normal" if is_up else "inverse" # Streamlit metric 綠色是正，紅色是負
+
+    # 計算總未結盈虧
     total_u_pnl = 0
     for p in st.session_state.positions:
         try:
@@ -323,7 +307,14 @@ if ai_res and df_chart is not None:
                 d = 1 if p['type']=='Long' else -1
                 total_u_pnl += p['margin'] * (((cur - p['entry'])/p['entry']) * p['lev'] * d)
         except: pass
-    c3.metric("總未結盈虧", f"${total_u_pnl:+.2f}", delta_color="normal")
+
+    # 三欄式大指標佈局
+    m1, m2, m3 = st.columns(3)
+    m1.metric(f"現價 ({interval_ui})", price_val, delta=ai_res['direction'])
+    m2.metric("可用餘額", f"${st.session_state.balance:,.2f}")
+    m3.metric("總未結盈虧", f"${total_u_pnl:+.2f}")
+
+    st.divider()
 
     # --- Chart ---
     df_plot = df_chart.copy()
@@ -343,7 +334,7 @@ if ai_res and df_chart is not None:
     fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
     fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
     
-    fig.update_layout(height=500, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan', title_text=f"{symbol} - {interval_ui} (台北時間)")
+    fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan', title_text=f"{symbol} - {interval_ui} (台北時間)")
     fig.update_xaxes(rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 
@@ -409,7 +400,7 @@ if ai_res and df_chart is not None:
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     
-                    # [防崩潰] 使用 on_click
+                    # [保留防崩潰] 使用 on_click
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
@@ -431,7 +422,7 @@ if ai_res and df_chart is not None:
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
                 
-                # [防崩潰] 使用 on_click
+                # [保留防崩潰] 使用 on_click
                 c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
                     
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
