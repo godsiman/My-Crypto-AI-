@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v73.2)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v73.2 最終穩定版)")
+st.set_page_config(page_title="全方位戰情室 AI (v74.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v74.0 最終版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v73.json"
+DATA_FILE = "trade_data_v74.json"
 
 def save_data():
     data = {
@@ -151,7 +151,7 @@ def get_ai_strategy(symbol):
 
     return {"direction": direction, "score": total_score, "trends": trends, "last_price": last_price}
 
-# --- Callbacks ---
+# --- Callbacks (關鍵修復位置) ---
 def on_select_change():
     new_sym = st.session_state.quick_select
     if st.session_state.market == "台股" and new_sym.isdigit(): new_sym += ".TW"
@@ -166,7 +166,7 @@ def on_input_change():
         if st.session_state.market == "加密貨幣" and "-" not in val and "USD" not in val: val += "-USD"
         st.session_state.chart_symbol = val
 
-# [核心修復] Callback 函數
+# [核心修復] 將跳轉功能獨立為 Callback 函數
 def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
     st.session_state.symbol_input = "" 
@@ -390,7 +390,7 @@ if ai_res and df_chart is not None:
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     
-                    # [關鍵修正] 使用 on_click 綁定 Callback
+                    # [絕對關鍵修正] 使用 on_click 並傳入參數
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
@@ -412,7 +412,7 @@ if ai_res and df_chart is not None:
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
                 
-                # [關鍵修正] 使用 on_click 綁定 Callback
+                # [絕對關鍵修正] 使用 on_click 並傳入參數
                 c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
                     
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
