@@ -491,4 +491,126 @@ if ai_res:
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Upper'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB上軌'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Lower'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB下軌'), row=1, col=1)
     
-    for pos in
+    for pos in st.session_state.positions:
+        if pos['symbol'] == symbol:
+            fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
+    
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['RSI'], line=dict(color='violet', width=2), name='RSI'), row=2, col=1)
+    fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
+    fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
+    fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan', title_text=f"{symbol} - {interval_ui} (台北時間)")
+    fig.update_xaxes(rangeslider_visible=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- Trading ---
+    tab_trade, tab_orders, tab_history = st.tabs(["⚡ 下單交易", "📋 訂單管理", "📜 歷史訂單"])
+    
+    with tab_trade:
+        col_ctrl, col_info = st.columns([2, 1])
+        with col_ctrl:
+            c_t1, c_t2, c_t3 = st.columns(3)
+            trade_type = c_t1.selectbox("方向", ["做多 (Long)", "做空 (Short)"], index=0 if "多" in ai_res['direction'] else 1)
+            lev = c_t2.slider("槓桿", 1, 125, 20)
+            amt = c_t3.number_input("本金 (U)", min_value=10.0, value=float(st.session_state.trade_amt_box))
+            st.session_state.trade_amt_box = amt
+            
+            with st.expander("進階 (止盈止損)", expanded=True):
+                mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
+                rec_tp = ai_res['tp']; rec_sl = ai_res['sl']
+                if mode == "價格":
+                    t_tp = st.number_input("止盈價格", value=float(rec_tp), format="%.6f")
+                    t_sl = st.number_input("止損價格", value=float(rec_sl), format="%.6f")
+                else:
+                    roe_tp = st.number_input("止盈 ROE %", value=0.0)
+                    roe_sl = st.number_input("止損 ROE %", value=0.0)
+                    t_tp, t_sl = 0.0, 0.0
+                    direction = 1 if "多" in trade_type else -1
+                    if roe_tp > 0: t_tp = curr_price * (1 + (roe_tp / 100) / lev * direction)
+                    if roe_sl > 0: t_sl = curr_price * (1 - (roe_sl / 100) / lev * direction)
+                t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
+
+            if st.button("🚀 下單 / 掛單", type="primary", use_container_width=True):
+                final_entry = curr_price if t_entry == 0 else t_entry
+                if mode == "ROE %":
+                    direction = 1 if "多" in trade_type else -1
+                    if roe_tp > 0: t_tp = final_entry * (1 + (roe_tp / 100) / lev * direction)
+                    if roe_sl > 0: t_sl = final_entry * (1 - (roe_sl / 100) / lev * direction)
+
+                if amt > available:
+                    st.error(f"可用餘額不足！ (可用: ${available:.2f})")
+                else:
+                    new_pos = {
+                        "symbol": symbol,
+                        "type": "Long" if "多" in trade_type else "Short",
+                        "entry": final_entry,
+                        "lev": lev,
+                        "margin": amt,
+                        "tp": t_tp,
+                        "sl": t_sl,
+                        "time": datetime.now().strftime("%m-%d %H:%M")
+                    }
+                    if t_entry == 0:
+                        st.session_state.positions.append(new_pos)
+                        st.toast(f"✅ 市價成交！")
+                    else:
+                        st.session_state.pending_orders.append(new_pos)
+                        st.toast(f"⏳ 掛單提交！")
+                    save_data()
+                    st.rerun()
+        
+        with col_info:
+            st.info("☝️ 已自動填入 AI 建議點位")
+            if "VWAP" in str(ai_res['signals']):
+                st.success("注意：價格位於機構成本 (VWAP) 之上，支撐強勁")
+            elif "跌破 VWAP" in str(ai_res['signals']):
+                st.warning("注意：價格跌破機構成本 (VWAP)，小心回調")
+
+    with tab_orders:
+        st.subheader("🔥 持倉中")
+        if not st.session_state.positions: st.caption("無持倉")
+        else:
+            for i, pos in enumerate(st.session_state.positions):
+                p_sym = pos['symbol']
+                p_cur = get_current_price(p_sym)
+                if p_cur:
+                    d = 1 if pos['type']=='Long' else -1
+                    pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
+                    roe_pct = (pnl / pos['margin']) * 100
+                    if roe_pct <= -100.0:
+                        close_position(i, 100, "💀 爆倉 (-100%)", p_cur)
+                        st.toast(f"⚠️ {p_sym} 已爆倉！保證金歸零")
+                        st.rerun()
+                    clr = "#00C853" if pnl >= 0 else "#FF3D00"
+                    c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
+                    c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
+                    c_info.markdown(f"""
+                    <div style='font-size:14px'>
+                        <b>{pos['type']} x{pos['lev']}</b> <span style='color:#aaa'>| 本金 ${pos['margin']:.0f}</span><br>
+                        盈虧: <span style='color:{clr}; font-weight:bold'>${pnl:+.2f} ({roe_pct:+.2f}%)</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if c_mng.button("⚙️", key=f"mng_{i}"): manage_position_dialog(i, pos, p_cur)
+                    st.divider()
+
+        st.subheader("⏳ 掛單中")
+        if not st.session_state.pending_orders: st.caption("無掛單")
+        else:
+            for i, ord in enumerate(st.session_state.pending_orders):
+                o_sym = ord['symbol']
+                c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
+                c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
+                c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
+                if c_cnl.button("❌", key=f"cnl_{i}"): cancel_order(i); st.rerun()
+                st.divider()
+
+    with tab_history:
+        st.subheader("📜 歷史戰績")
+        if not st.session_state.history:
+            st.info("暫無歷史紀錄")
+        else:
+            hist_df = pd.DataFrame(st.session_state.history)
+            hist_df = hist_df.iloc[::-1]
+            st.dataframe(hist_df, use_container_width=True, hide_index=True)
+
+else:
+    st.error(f"❌ 無法讀取 {symbol}，請確認代碼或網路連線。")
