@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v86.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v86.0 戰略指揮官版)")
+st.set_page_config(page_title="全方位戰情室 AI (v87.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v87.0 短線攻擊版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v86.json"
+DATA_FILE = "trade_data_v87.json"
 
 def save_data():
     data = {
@@ -94,6 +94,9 @@ def calculate_indicators(df):
     if df is None or df.empty: return df
     df = df.copy()
     
+    # [新增] EMA7 短線攻擊線
+    df['EMA7'] = df['Close'].ewm(span=7).mean()
+    
     # 均線
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA60'] = df['Close'].ewm(span=60).mean()
@@ -148,10 +151,10 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- [核心邏輯升級] 混合 AI 分析 (宏觀+微觀) ---
+# --- Hybrid Strategy ---
 @st.cache_data(ttl=120)
 def get_hybrid_strategy(symbol, current_interval_ui):
-    # 1. 宏觀分析 (Macro): 掃描 月/週/日
+    # 1. Macro
     macro_intervals = {"M": ("1mo","5y"), "W": ("1wk","2y"), "D": ("1d","1y")}
     macro_trends = {}
     macro_score = 0
@@ -162,7 +165,6 @@ def get_hybrid_strategy(symbol, current_interval_ui):
             if not df_m.empty:
                 df_m = calculate_indicators(df_m)
                 last = df_m.iloc[-1]
-                # 簡單趨勢判定: 價格在 EMA20 之上 = 多, 之下 = 空
                 if last['Close'] > last['EMA20']:
                     macro_trends[tf] = "多頭"
                     macro_score += 1
@@ -172,8 +174,7 @@ def get_hybrid_strategy(symbol, current_interval_ui):
         except:
             macro_trends[tf] = "未知"
 
-    # 2. 微觀分析 (Micro): 分析當前選擇的週期 (例如 15分)
-    # 這裡的訊號比重較大，因為這是你的入場時機
+    # 2. Micro
     df_curr = get_chart_data(symbol, current_interval_ui)
     if df_curr is None or len(df_curr) < 30: return None
     
@@ -183,6 +184,14 @@ def get_hybrid_strategy(symbol, current_interval_ui):
     micro_score = 0
     signals = []
     
+    # [新增] 短線攻擊訊號 (Price vs EMA7)
+    if last['Close'] > last['EMA7']:
+        signals.append("⚡ 站上短線 (EMA7) - 攻擊態勢")
+        micro_score += 1.5
+    else:
+        signals.append("⚠️ 跌破短線 (EMA7) - 短線轉弱")
+        micro_score -= 1.5
+
     # 均線排列
     if last['Close'] > last['EMA20'] > last['EMA60']:
         signals.append("✅ 均線多頭排列")
@@ -191,7 +200,7 @@ def get_hybrid_strategy(symbol, current_interval_ui):
         signals.append("🔻 均線空頭排列")
         micro_score -= 2
         
-    # MACD 金叉/死叉
+    # MACD
     if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
         signals.append("🚀 MACD 黃金交叉")
         micro_score += 2
@@ -199,23 +208,22 @@ def get_hybrid_strategy(symbol, current_interval_ui):
         signals.append("💀 MACD 死亡交叉")
         micro_score -= 2
         
-    # RSI 背離 (簡易)
+    # RSI Divergence
     recent_low = df_curr['Close'].tail(15).min()
     recent_rsi_low = df_curr['RSI'].tail(15).min()
     if last['Close'] <= recent_low and last['RSI'] > recent_rsi_low + 5:
         signals.append("💎 RSI 底背離 (潛在反轉)")
         micro_score += 3
     
-    # 布林
+    # BB
     if last['Close'] > last['BB_Upper']:
-        signals.append("🔥 突破布林上軌 (動能強)")
+        signals.append("🔥 突破布林上軌")
         micro_score += 1
     elif last['Close'] < last['BB_Lower']:
-        signals.append("❄️ 跌破布林下軌 (超賣)")
-        micro_score -= 1 # 短線可能反彈，但趨勢是空
+        signals.append("❄️ 跌破布林下軌")
+        micro_score -= 1
 
-    # 3. 綜合評分與建議
-    # 總分 = 宏觀(30%) + 微觀(70%)
+    # 3. Final Score
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
     
     direction = "觀望"
@@ -224,17 +232,15 @@ def get_hybrid_strategy(symbol, current_interval_ui):
     elif final_score <= -1.5: direction = "強力做空 (Strong Sell)"
     elif final_score <= -0.5: direction = "嘗試做空 (Sell)"
     
-    # 4. 具體點位計算 (基於 ATR)
+    # 4. Levels
     curr_price = last['Close']
     atr = last.get('ATR', curr_price * 0.02)
     
     if final_score > 0:
-        # 多單建議
-        entry = curr_price # 市價進場
+        entry = curr_price
         tp = entry + (atr * 2.5)
         sl = entry - (atr * 1.5)
     else:
-        # 空單建議
         entry = curr_price
         tp = entry - (atr * 2.5)
         sl = entry + (atr * 1.5)
@@ -423,29 +429,21 @@ if ai_res:
 
     st.divider()
 
-    # --- [全新] 戰略指揮中心 Dashboard ---
+    # --- Dashboard ---
     st.subheader("🧠 AI 戰略指揮中心")
-    
-    # 三欄佈局：宏觀 | 訊號 | 點位
     col_macro, col_signal, col_action = st.columns([1, 1.5, 1.5])
-    
     with col_macro:
         st.markdown("#### 🔭 宏觀趨勢")
-        
-        def get_trend_icon(t):
-            return "🟢 多頭" if t=="多頭" else ("🔴 空頭" if t=="空頭" else "⚪ 未知")
-            
+        def get_trend_icon(t): return "🟢 多頭" if t=="多頭" else ("🔴 空頭" if t=="空頭" else "⚪ 未知")
         st.write(f"**月線 (M):** {get_trend_icon(ai_res['macro_trends'].get('M'))}")
         st.write(f"**週線 (W):** {get_trend_icon(ai_res['macro_trends'].get('W'))}")
         st.write(f"**日線 (D):** {get_trend_icon(ai_res['macro_trends'].get('D'))}")
         
     with col_signal:
         st.markdown("#### 📡 技術形態訊號")
-        if not ai_res['signals']:
-            st.info("暫無明顯形態")
+        if not ai_res['signals']: st.info("暫無明顯形態")
         else:
-            for sig in ai_res['signals']:
-                st.markdown(f"- {sig}")
+            for sig in ai_res['signals']: st.markdown(f"- {sig}")
                 
     with col_action:
         st.markdown(f"#### 🚀 戰術建議: {ai_res['direction']}")
@@ -459,10 +457,14 @@ if ai_res:
     # --- Chart ---
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
+    
+    # [新增] EMA7 短線 (白色)
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1.5), name='EMA7 (短線)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Upper'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB上軌'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Lower'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB下軌'), row=1, col=1)
+    
     for pos in st.session_state.positions:
         if pos['symbol'] == symbol:
             fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
@@ -488,14 +490,13 @@ if ai_res:
             
             with st.expander("進階 (止盈止損)", expanded=True):
                 mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
-                
-                # 自動填入建議點位 (僅當作預設值，用戶可改)
-                suggested_tp = ai_res['tp']
-                suggested_sl = ai_res['sl']
+                # 自動填入建議
+                rec_tp = ai_res['tp']
+                rec_sl = ai_res['sl']
                 
                 if mode == "價格":
-                    t_tp = st.number_input("止盈價格", value=float(suggested_tp), format="%.6f")
-                    t_sl = st.number_input("止損價格", value=float(suggested_sl), format="%.6f")
+                    t_tp = st.number_input("止盈價格", value=float(rec_tp), format="%.6f")
+                    t_sl = st.number_input("止損價格", value=float(rec_sl), format="%.6f")
                 else:
                     roe_tp = st.number_input("止盈 ROE %", value=0.0)
                     roe_sl = st.number_input("止損 ROE %", value=0.0)
@@ -503,7 +504,6 @@ if ai_res:
                     direction = 1 if "多" in trade_type else -1
                     if roe_tp > 0: t_tp = curr_price * (1 + (roe_tp / 100) / lev * direction)
                     if roe_sl > 0: t_sl = curr_price * (1 - (roe_sl / 100) / lev * direction)
-                
                 t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
 
             if st.button("🚀 下單 / 掛單", type="primary", use_container_width=True):
@@ -537,7 +537,7 @@ if ai_res:
         
         with col_info:
             st.info("☝️ 已自動填入 AI 建議點位")
-            st.caption("您可以手動調整或切換 ROE 模式")
+            st.caption("短線(白色) 是您的攻擊發起線")
 
     with tab_orders:
         st.subheader("🔥 持倉中")
