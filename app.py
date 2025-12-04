@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v73.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v73.0 精度與導航修復版)")
+st.set_page_config(page_title="全方位戰情室 AI (v73.1)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v73.1 導航崩潰修復版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -43,13 +43,9 @@ def load_data():
         st.session_state.pending_orders = []
         st.session_state.history = []
         st.session_state.trade_amt_box = 1000.0
-        # [修復] 這裡初始設為 BTC-USD
         st.session_state.chart_symbol = "BTC-USD"
         st.session_state.market = "加密貨幣"
-        
-        # [修復] 初始化輸入框狀態
         st.session_state.symbol_input = "" 
-        
         st.session_state.init_done = True
 
     if os.path.exists(DATA_FILE):
@@ -70,7 +66,6 @@ def fmt_price(val):
     if val is None: return "N/A"
     try:
         valf = float(val)
-        # [修復] 只要小於 1.0 就顯示 6 位小數，解決小幣顯示問題
         if valf < 1.0: return f"${valf:.6f}"
         elif valf < 20: return f"${valf:.4f}"
         else: return f"${valf:,.2f}"
@@ -156,28 +151,25 @@ def get_ai_strategy(symbol):
 
     return {"direction": direction, "score": total_score, "trends": trends, "last_price": last_price}
 
-# --- Callbacks (解決輸入框打架的關鍵) ---
+# --- Callbacks ---
 def on_select_change():
-    # 當下拉選單改變時，清空手動輸入框，並設定當前幣種
     new_sym = st.session_state.quick_select
     if st.session_state.market == "台股" and new_sym.isdigit(): new_sym += ".TW"
     if st.session_state.market == "加密貨幣" and "-" not in new_sym and "USD" not in new_sym: new_sym += "-USD"
-    
     st.session_state.chart_symbol = new_sym
-    st.session_state.symbol_input = "" # 清空手動輸入
+    st.session_state.symbol_input = "" 
 
 def on_input_change():
-    # 當手動輸入改變時，設定當前幣種
     val = st.session_state.symbol_input.strip().upper()
     if val:
         if st.session_state.market == "台股" and val.isdigit(): val += ".TW"
         if st.session_state.market == "加密貨幣" and "-" not in val and "USD" not in val: val += "-USD"
         st.session_state.chart_symbol = val
 
+# [核心修復] 將跳轉函數設計為 Callback
 def jump_to_symbol(target_symbol):
-    # 跳轉專用函數：設定幣種並清空輸入框，防止跳回來
     st.session_state.chart_symbol = target_symbol
-    st.session_state.symbol_input = "" 
+    st.session_state.symbol_input = "" # 在下一次渲染前清空，不會報錯
 
 # --- Dialogs ---
 @st.dialog("⚡ 倉位管理")
@@ -246,7 +238,7 @@ def cancel_order(idx):
 # --- Sidebar ---
 st.sidebar.header("🎯 戰情室設定")
 market = st.sidebar.radio("市場", ["加密貨幣", "美股", "台股"], index=0)
-st.session_state.market = market # 確保市場狀態更新
+st.session_state.market = market
 interval_ui = st.sidebar.radio("⏱️ K線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
 if market == "加密貨幣":
@@ -259,11 +251,9 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.write("🔍 搜尋/選擇")
 
-# [修復] 使用 Session State 的 key 和 on_change 來處理衝突
 st.sidebar.text_input("輸入代碼 (Enter 確認)", key="symbol_input", on_change=on_input_change)
 st.sidebar.selectbox("快速選擇", targets, key="quick_select", on_change=on_select_change)
 
-# 直接讀取最終狀態
 symbol = st.session_state.chart_symbol
 
 st.sidebar.markdown("---")
@@ -298,7 +288,6 @@ if ai_res and df_chart is not None:
     is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
     p_color = "#00C853" if is_up else "#FF3D00"
     
-    # [修復] 大標題的精度顯示
     if curr_price < 1.0:
         price_display = f"${curr_price:.6f}"
     else:
@@ -352,7 +341,6 @@ if ai_res and df_chart is not None:
             st.session_state.trade_amt_box = amt
             
             with st.expander("進階 (掛單/止盈損)", expanded=False):
-                # [修復] 這裡也要支援高精度顯示
                 t_tp = st.number_input("止盈", value=float(rec_tp), format="%.6f")
                 t_sl = st.number_input("止損", value=float(rec_sl), format="%.6f")
                 t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
@@ -402,10 +390,8 @@ if ai_res and df_chart is not None:
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     
-                    # [修復] 使用 callback 方式跳轉，確保清空輸入框
-                    if c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}"):
-                        jump_to_symbol(p_sym)
-                        st.rerun()
+                    # [重點修正] 改用 on_click 來調用 jump_to_symbol
+                    c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
                     <div style='font-size:14px'>
@@ -426,10 +412,8 @@ if ai_res and df_chart is not None:
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
                 
-                # [修復] 跳轉
-                if c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}"):
-                    jump_to_symbol(o_sym)
-                    st.rerun()
+                # [重點修正] 改用 on_click
+                c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
                     
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
                 if c_cnl.button("❌", key=f"cnl_{i}"):
