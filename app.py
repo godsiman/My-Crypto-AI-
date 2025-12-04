@@ -45,19 +45,59 @@ def get_current_price(sym):
     return None
 
 # --- 4. 側邊欄設定 ---
-st.sidebar.header("🎯 市場與標的")
+import streamlit as st
 
-# 智能搜尋框 (預設值連動 Session)
-def update_symbol():
-    st.session_state.chart_symbol = smart_parse(st.session_state.symbol_input)
+st.header("🏹 市場與標的")
 
-def smart_parse(s):
-    s = s.strip().upper()
-    us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC", "SMCI", "MSTR"]
-    if "-" in s or "." in s: return s
-    if s.isdigit(): return f"{s}.TW"
-    if s in us_stocks: return s
-    return f"{s}-USD"
+market = st.radio(
+    "選擇市場",
+    ["加密貨幣", "美股", "台股"],
+    key="market_select",
+)
+
+# ======== 常見標的列表 ========
+
+crypto_list = [
+    "BTC", "ETH", "SOL", "BNB", "DOGE", "XRP", "ADA", "AVAX",
+]
+
+us_stock_list = [
+    "AAPL", "MSFT", "TSLA", "NVDA", "META", "AMZN",
+]
+
+tw_stock_dict = {
+    "2330 台積電": "2330",
+    "2454 聯發科": "2454",
+    "2303 聯電": "2303",
+    "2603 長榮": "2603",
+    "2615 萬海": "2615",
+    "0050 元大台灣50": "0050",
+}
+
+# ======== 不同市場顯示不同下拉選單 ========
+if market == "加密貨幣":
+    selected_symbol = st.selectbox(
+        "常見加密貨幣",
+        crypto_list,
+    )
+elif market == "美股":
+    selected_symbol = st.selectbox(
+        "常見美股",
+        us_stock_list,
+    )
+else:  # 台股
+    tw_display = list(tw_stock_dict.keys())
+    tw_pick = st.selectbox("常見台股", tw_display)
+    selected_symbol = tw_stock_dict[tw_pick]
+
+# ======== 快速搜尋 ========
+search_input = st.text_input("🔍 搜尋標的 / 關鍵字輸入")
+
+if search_input:
+    selected_symbol = search_input.upper().replace("USDT", "").replace("USD", "")
+
+st.session_state["symbol"] = selected_symbol
+st.success(f"目前選擇標的：{selected_symbol}")
 
 # 顯示輸入框
 st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol, key="symbol_input", on_change=update_symbol)
@@ -422,3 +462,4 @@ if df is not None:
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.error(f"❌ 找不到 {symbol} 數據。")
+
