@@ -43,7 +43,9 @@ def get_current_price(sym):
 st.sidebar.header("🎯 市場與標的")
 
 # 智能搜尋框 (預設值連動 Session)
-user_symbol_input = st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol)
+# key='symbol_input' 讓輸入框與 session state 綁定
+def update_symbol():
+    st.session_state.chart_symbol = smart_parse(st.session_state.symbol_input)
 
 def smart_parse(s):
     s = s.strip().upper()
@@ -53,16 +55,15 @@ def smart_parse(s):
     if s in us_stocks: return s
     return f"{s}-USD"
 
-symbol = smart_parse(user_symbol_input)
-
-# 更新 Session
-if symbol != st.session_state.chart_symbol:
-    st.session_state.chart_symbol = symbol
+# 顯示輸入框
+st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol, key="symbol_input", on_change=update_symbol)
+symbol = st.session_state.chart_symbol
 
 interval_ui = st.sidebar.radio("K 線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👁️ 視覺化開關")
+# 定義開關變數，確保在主程式前就已經有值
 show_six = st.sidebar.checkbox("顯示 六道乾坤帶", value=True)
 show_zigzag = st.sidebar.checkbox("顯示 ZigZag 結構", value=True)
 show_fvg = st.sidebar.checkbox("顯示 FVG 缺口", value=True)
@@ -224,7 +225,7 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
         st.session_state.positions[pos_index]['margin'] -= close_margin
 
 # --- 主程式 ---
-df = get_data(symbol, period, interval, None)
+df = get_data(symbol, period, interval)
 
 if df is not None:
     last = df.iloc[-1]
@@ -252,11 +253,13 @@ if df is not None:
                     if pos['type'] == 'Long': liq = pos['entry'] * (1 - 1/pos['lev'])
                     else: liq = pos['entry'] * (1 + 1/pos['lev'])
                     
+                    # 卡片 UI
                     with st.container():
                         # 標題 + 跳轉按鈕
                         c_title, c_jump = st.columns([3, 1])
                         c_title.markdown(f"**#{i+1} {pos['symbol']}**")
                         if pos['symbol'] != symbol:
+                            # 這裡按下去會更新 Session 並重跑
                             if c_jump.button("🔍", key=f"jump_{i}"):
                                 st.session_state.chart_symbol = pos['symbol']
                                 st.rerun()
@@ -295,7 +298,10 @@ if df is not None:
         leverage = c2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
         # 資金全開
-        principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
+        max_bal = float(st.session_state.balance)
+        # 防呆：若餘額小於10U，設為10U避免報錯
+        input_max = max(10.0, max_bal)
+        principal = st.number_input("本金 (U)", 10.0, input_max, min(1000.0, input_max), key="new_amt")
         
         with st.expander("進階設定 (TP/SL)"):
             set_tp = st.number_input("止盈 TP", value=0.0, format="%.4f", key="new_tp")
