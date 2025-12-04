@@ -8,8 +8,8 @@ from scipy.signal import argrelextrema
 from datetime import datetime
 
 # --- 頁面設定 ---
-st.set_page_config(page_title="全方位戰情室 AI (v30.0)", layout="wide")
-st.title("🏦 全方位戰情室 AI (v30.0 基金經理人版)")
+st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
+st.title("🏦 全方位戰情室 AI (v30.0 基金經理人部署版)")
 
 # --- Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
@@ -19,37 +19,38 @@ if 'history' not in st.session_state: st.session_state.history = []
 # 用來控制跳轉的 Session
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 
-# --- 工具函數：獲取最新價格 (輕量版) ---
+# --- 工具函數 ---
 def get_current_price(sym):
+    """ 快速獲取任何幣種的最新價，用於後台計算損益 """
     try:
-        # 嘗試抓取單即時價格，不抓歷史數據以求快
         ticker = yf.Ticker(sym)
-        # fast_info 通常比較快
-        price = ticker.fast_info.last_price
-        if pd.isna(price): # 如果失敗，回退到 history
+        # 嘗試獲取即時數據
+        if len(ticker.fast_info) > 0:
+            return ticker.fast_info.last_price
+        else:
+            # 回退方案
             hist = ticker.history(period="1d")
             if not hist.empty:
-                price = hist['Close'].iloc[-1]
-            else:
-                return None
-        return price
+                return hist['Close'].iloc[-1]
     except:
         return None
+    return None
 
 def fmt_price(val):
+    """ 智能價格格式化 """
     if val is None: return "N/A"
     if val < 0.01: return f"${val:.6f}"
     elif val < 20: return f"${val:.4f}"
     else: return f"${val:,.2f}"
 
-# --- 側邊欄設定 ---
-st.sidebar.header("🎯 市場與標的")
+# --- 側邊欄 ---
+st.sidebar.header("🎯 市場切換")
 
-# 跳轉邏輯：如果有點擊跳轉，強制把模式切換到「手動輸入」並填入代碼
-# 這裡我們用一個 trick：把預設值設為 session_state 中的值
-user_symbol_input = st.sidebar.text_input("🔍 快速搜尋 / 跳轉", value=st.session_state.chart_symbol)
+# 為了支援跳轉，我們需要一個動態的輸入框
+# 如果有點擊跳轉，這會變成持倉的幣種
+symbol_input = st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol)
 
-# 處理輸入代碼
+# 智能解析
 def smart_parse(s):
     s = s.strip().upper()
     us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC"]
@@ -58,15 +59,15 @@ def smart_parse(s):
     if s in us_stocks: return s
     return f"{s}-USD" # 預設加密幣
 
-symbol = smart_parse(user_symbol_input)
+symbol = smart_parse(symbol_input)
 
-# 更新 session 以便下次記住
+# 更新 session 保持同步
 if symbol != st.session_state.chart_symbol:
     st.session_state.chart_symbol = symbol
 
 interval_ui = st.sidebar.radio("K 線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
-# --- 核心數據處理 ---
+# --- 核心邏輯 ---
 def get_params(ui_selection):
     if "15分鐘" in ui_selection: return "5d", "15m"
     elif "1小時" in ui_selection: return "1mo", "1h"
@@ -99,7 +100,6 @@ def get_data(symbol, period, interval, ui_selection):
         return df
     except: return None
 
-# 指標函數
 def calculate_zigzag(df, depth=12):
     try:
         df['max_roll'] = df['High'].rolling(window=depth, center=True).max()
@@ -194,8 +194,8 @@ def generate_ai_report(symbol, price, score, struct, six, fvg, div, rsi_txt, buy
 # --- 🏦 平倉/減倉函數 ---
 def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=0):
     if pos_index >= len(st.session_state.positions): return
-    pos = st.session_state.positions[pos_index]
     
+    pos = st.session_state.positions[pos_index]
     close_margin = pos['margin'] * (percentage / 100)
     direction = 1 if pos['type'] == 'Long' else -1
     pnl_pct = ((exit_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
@@ -217,7 +217,7 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
         st.session_state.positions.pop(pos_index)
     else:
         st.session_state.positions[pos_index]['margin'] -= close_margin
-        
+
 # --- 主程式 ---
 df = get_data(symbol, period, interval, interval_ui)
 
@@ -232,15 +232,15 @@ if df is not None:
     with st.sidebar.expander("🏦 我的錢包與持倉 (Manager)", expanded=True):
         st.metric("💰 總資產 (USDT)", f"${st.session_state.balance:,.2f}")
         
-        # --- 開倉區 ---
-        if not st.session_state.positions:
-            st.info("尚未持有任何倉位")
-        else:
-            st.markdown("##### 🔥 持倉監控 (全域)")
+        # --- 持倉監控 (全域) ---
+        if st.session_state.positions:
+            st.markdown("##### 🔥 持倉列表")
             
-            # 遍歷所有倉位
-            for i, pos in enumerate(st.session_state.positions):
-                # 獲取該幣種的即時價格
+            # 遍歷所有倉位 (反向遍歷，方便刪除)
+            for i in range(len(st.session_state.positions) - 1, -1, -1):
+                pos = st.session_state.positions[i]
+                
+                # 自動抓取該幣種最新價 (即使現在看別的圖)
                 live_price = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
                 
                 if live_price:
@@ -248,25 +248,26 @@ if df is not None:
                     pnl_pct = ((live_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
                     pnl_usdt = pos['margin'] * (pnl_pct / 100)
                     
+                    # 爆倉價
                     if pos['type'] == 'Long': liq = pos['entry'] * (1 - 1/pos['lev'])
                     else: liq = pos['entry'] * (1 + 1/pos['lev'])
                     
                     # 卡片顯示
                     with st.container():
-                        st.markdown(f"**#{i+1} {pos['symbol']}** ({pos['type']} {pos['lev']}x)")
+                        # 標題 + 跳轉按鈕
+                        c_title, c_jump = st.columns([3, 1])
+                        c_title.markdown(f"**{pos['symbol']}** ({pos['type']} {pos['lev']}x)")
+                        if pos['symbol'] != symbol:
+                            if c_jump.button("🔍", key=f"jump_{i}"):
+                                st.session_state.chart_symbol = pos['symbol']
+                                st.rerun()
                         
-                        # 小數點後2位修正
+                        # 損益與均價
                         c1, c2 = st.columns(2)
                         c1.metric("損益", f"${pnl_usdt:,.2f}", f"{pnl_pct:.2f}%")
                         c2.write(f"開倉: {fmt_price(pos['entry'])}")
                         
-                        # 跳轉按鈕 (Trick: 設定 input value)
-                        if pos['symbol'] != symbol:
-                            if st.button(f"🔍 分析 {pos['symbol']}", key=f"jump_{i}"):
-                                st.session_state.chart_symbol = pos['symbol']
-                                st.rerun()
-                        
-                        # 自動平倉邏輯
+                        # 自動平倉檢查
                         reason = None
                         if (pos['type']=='Long' and live_price <= liq) or (pos['type']=='Short' and live_price >= liq): reason="💀 爆倉"
                         elif pos['tp']>0 and ((pos['type']=='Long' and live_price >= pos['tp']) or (pos['type']=='Short' and live_price <= pos['tp'])): reason="🎯 止盈"
@@ -276,20 +277,23 @@ if df is not None:
                             close_position(i, 100, reason, live_price)
                             st.rerun()
 
-                        # 手動平倉
-                        if st.button(f"平倉 {pos['symbol']}", key=f"close_{i}"):
+                        # 手動平倉按鈕
+                        if st.button(f"平倉 {pos['symbol']} #{i}", key=f"close_{i}"):
                             close_position(i, 100, "手動", live_price)
                             st.rerun()
                         st.divider()
                 else:
-                    st.warning(f"無法讀取 {pos['symbol']} 價格")
+                    st.error(f"無法讀取 {pos['symbol']}")
+        else:
+            st.info("尚未持有倉位")
 
+        # --- 開倉區 ---
         st.markdown("##### 🚀 開立新倉位")
         col_s1, col_s2 = st.columns(2)
         trade_type = col_s1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
         leverage = col_s2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
-        # 資金全開：可以是任意數字
+        # 資金全開：任意數字
         principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
         
         st.caption("自動平倉設定 (選填)")
@@ -331,8 +335,7 @@ if df is not None:
     buy_sl = pivot_lows[-1] if pivot_lows else last['Close'] - 2*atr
     sell_sl = pivot_highs[-1] if pivot_highs else last['Close'] + 2*atr
     
-    # 邏輯防呆
-    if buy_sl >= last['Close']: buy_sl = last['Close'] - 2*atr
+    if buy_sl >= last['Close']: buy_sl = last['Close'] - 2*atr 
     if sell_sl <= last['Close']: sell_sl = last['Close'] + 2*atr
 
     tp1 = 0; tp2 = 0; entry_zone = "現價"; risk_warning = "" 
