@@ -225,7 +225,7 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
         st.session_state.positions[pos_index]['margin'] -= close_margin
 
 # --- 主程式 ---
-df = get_data(symbol, period, interval)
+df = get_data(symbol, period, interval, None)
 
 if df is not None:
     last = df.iloc[-1]
@@ -242,7 +242,7 @@ if df is not None:
         if st.session_state.positions:
             st.markdown("##### 🔥 持倉列表")
             for i, pos in enumerate(st.session_state.positions):
-                # 自動抓取該幣種最新價 (全域監控)
+                # 自動抓取該幣種最新價
                 live_price = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
                 
                 if live_price:
@@ -253,20 +253,18 @@ if df is not None:
                     if pos['type'] == 'Long': liq = pos['entry'] * (1 - 1/pos['lev'])
                     else: liq = pos['entry'] * (1 + 1/pos['lev'])
                     
-                    # 卡片 UI
                     with st.container():
                         # 標題 + 跳轉按鈕
                         c_title, c_jump = st.columns([3, 1])
                         c_title.markdown(f"**#{i+1} {pos['symbol']}**")
                         if pos['symbol'] != symbol:
-                            # 這裡按下去會更新 Session 並重跑
                             if c_jump.button("🔍", key=f"jump_{i}"):
                                 st.session_state.chart_symbol = pos['symbol']
                                 st.rerun()
                         
                         c1, c2 = st.columns(2)
                         c1.write(f"{pos['type']} {pos['lev']}x")
-                        # 損益顏色與小數位修正
+                        # 損益顏色
                         color = "green" if pnl_usdt >= 0 else "red"
                         c2.markdown(f":{color}[**{pnl_usdt:+.2f} U**]")
                         
@@ -298,10 +296,7 @@ if df is not None:
         leverage = c2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
         # 資金全開
-        max_bal = float(st.session_state.balance)
-        # 防呆：若餘額小於10U，設為10U避免報錯
-        input_max = max(10.0, max_bal)
-        principal = st.number_input("本金 (U)", 10.0, input_max, min(1000.0, input_max), key="new_amt")
+        principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
         
         with st.expander("進階設定 (TP/SL)"):
             set_tp = st.number_input("止盈 TP", value=0.0, format="%.4f", key="new_tp")
