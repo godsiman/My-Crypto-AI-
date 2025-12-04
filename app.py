@@ -6,33 +6,31 @@ import plotly.graph_objects as go
 from scipy.signal import argrelextrema
 from datetime import datetime
 
-# --- 1. 頁面設定 (必須在程式碼最上方) ---
-st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.title("🏦 全方位戰情室 AI (v31.1 部署版)")
+# --- 1. 頁面設定 (必須在第一行) ---
+st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
+st.title("🏦 全方位戰情室 AI (v31.1 最終修正部署版)")
 
 # --- 2. Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
 if 'positions' not in st.session_state: st.session_state.positions = [] 
 if 'history' not in st.session_state: st.session_state.history = []
-# 用來控制跳轉的變數
+# 控制當前顯示的幣種
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 
 # --- 3. 工具函數 ---
 def fmt_price(val):
-    """ 智能價格格式化：小幣顯示更多位數，大幣顯示兩位 """
+    """ 智能價格格式化 """
     if val is None: return "N/A"
     if val < 0.01: return f"${val:.6f}"
     elif val < 20: return f"${val:.4f}"
     else: return f"${val:,.2f}"
 
 def get_current_price(sym):
-    """ 後台獲取最新價格 (用於全域監控損益) """
+    """ 獲取最新價格 (用於後台計算損益) """
     try:
         ticker = yf.Ticker(sym)
-        # 優先嘗試 fast_info (速度快)
         if hasattr(ticker, 'fast_info') and ticker.fast_info.last_price:
             return ticker.fast_info.last_price
-        # 失敗則回退到 history (穩定)
         hist = ticker.history(period="1d")
         if not hist.empty:
             return hist['Close'].iloc[-1]
@@ -43,27 +41,28 @@ def get_current_price(sym):
 # --- 4. 側邊欄設定 ---
 st.sidebar.header("🎯 市場與標的")
 
-# 智能搜尋框 (連動 Session)
-user_symbol_input = st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol)
+# 智能搜尋框 (預設值連動 Session)
+# key='symbol_input' 讓輸入框與 session state 綁定
+def update_symbol():
+    st.session_state.chart_symbol = smart_parse(st.session_state.symbol_input)
 
 def smart_parse(s):
     s = s.strip().upper()
-    us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC", "SMCI"]
+    us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC", "SMCI", "MSTR"]
     if "-" in s or "." in s: return s
     if s.isdigit(): return f"{s}.TW"
     if s in us_stocks: return s
     return f"{s}-USD"
 
-symbol = smart_parse(user_symbol_input)
-
-# 如果用戶手動輸入了新的代碼，更新 Session
-if symbol != st.session_state.chart_symbol:
-    st.session_state.chart_symbol = symbol
+# 顯示輸入框
+st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol, key="symbol_input", on_change=update_symbol)
+symbol = st.session_state.chart_symbol
 
 interval_ui = st.sidebar.radio("K 線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👁️ 視覺化開關")
+# 定義開關變數 (修復 NameError)
 show_six = st.sidebar.checkbox("顯示 六道乾坤帶", value=True)
 show_zigzag = st.sidebar.checkbox("顯示 ZigZag 結構", value=True)
 show_fvg = st.sidebar.checkbox("顯示 FVG 缺口", value=True)
@@ -129,6 +128,7 @@ def calculate_fvg(df):
         h, l, c, t = df['High'].values, df['Low'].values, df['Close'].values, df.index
         start = max(2, len(df)-300)
         for i in range(start, len(df)):
+            # 修復 KeyError 'start'
             if l[i] > h[i-2] and c[i-1] > h[i-2]: 
                 bull.append({'start': t[i-2], 'top': l[i], 'bottom': h[i-2], 'active': True})
             if h[i] < l[i-2] and c[i-1] < l[i-2]: 
@@ -265,8 +265,7 @@ if df is not None:
                         
                         c1, c2 = st.columns(2)
                         c1.write(f"{pos['type']} {pos['lev']}x")
-                        
-                        # 損益顏色與兩位小數修正
+                        # 損益顏色與小數位修正
                         color = "green" if pnl_usdt >= 0 else "red"
                         c2.markdown(f":{color}[**{pnl_usdt:+.2f} U**]")
                         
@@ -297,10 +296,8 @@ if df is not None:
         trade_type = c1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
         leverage = c2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
-        # 資金全開設定
-        max_bal = float(st.session_state.balance)
-        input_max = max(10.0, max_bal) # 避免餘額為0時報錯
-        principal = st.number_input("本金 (U)", 10.0, input_max, min(1000.0, input_max), key="new_amt")
+        # 資金全開
+        principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
         
         with st.expander("進階設定 (TP/SL)"):
             set_tp = st.number_input("止盈 TP", value=0.0, format="%.4f", key="new_tp")
@@ -401,7 +398,7 @@ if df is not None:
         fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], name='生命線', line=dict(color='rgba(255,255,255,0.5)', width=1)), row=1, col=1)
     if show_fvg:
         for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.4)", line_width=0, row=1, col=1)
-        for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.4)", line_width=0, row=1, col=1)
+        for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.4)", line_width=0, row=1, col=1)
     if show_zigzag and pivots:
         px = [p['idx'] for p in pivots]; py = [p['val'] for p in pivots]
         fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=3), marker_size=6), row=1, col=1)
