@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v51.0 資金精準版)")
+st.markdown("### 🏦 全方位戰情室 AI (v52.0 資金按鈕修復版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -47,8 +47,8 @@ if 'data_loaded' not in st.session_state:
     load_data()
     st.session_state.data_loaded = True
 
-# 初始化下單金額
-if 'trade_amt_input' not in st.session_state: st.session_state.trade_amt_input = 1000.0
+# 初始化輸入框變數 (如果還沒有的話)
+if 'input_amt' not in st.session_state: st.session_state.input_amt = 1000.0
 
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 if 'market' not in st.session_state: st.session_state.market = "加密貨幣"
@@ -84,9 +84,10 @@ def calc_roe_from_price(entry, leverage, direction_str, target_price):
     try: return float(((target_price - entry) / entry) * leverage * direction * 100)
     except: return 0.0
 
-# --- Callbacks for Amount Buttons ---
+# --- [關鍵修復] 直接修改 input_amt ---
 def set_amt(ratio):
-    st.session_state.trade_amt_input = st.session_state.balance * ratio
+    # 直接覆寫輸入框的綁定變數
+    st.session_state.input_amt = float(st.session_state.balance * ratio)
 
 # --- Dialog Functions ---
 @st.dialog("⚡ 倉位管理", width="small")
@@ -528,14 +529,13 @@ if df is not None and not df.empty:
         
         st.write("快速選擇本金:")
         c_p1, c_p2, c_p3, c_p4 = st.columns(4)
-        # 關鍵修正: callback 綁定
         if c_p1.button("25%", use_container_width=True, on_click=set_amt, args=(0.25,)): pass
         if c_p2.button("50%", use_container_width=True, on_click=set_amt, args=(0.50,)): pass
         if c_p3.button("75%", use_container_width=True, on_click=set_amt, args=(0.75,)): pass
         if c_p4.button("Max", use_container_width=True, on_click=set_amt, args=(1.00,)): pass
 
-        # 這裡的 value 必須與 session_state 連動
-        amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_input), min_value=1.0, key="input_amt")
+        # 強制綁定 session_state
+        amt = st.number_input("本金 (U)", value=float(st.session_state.input_amt), min_value=1.0, key="input_amt_box", on_change=lambda: st.session_state.update({"input_amt": st.session_state.input_amt_box}))
         
         with st.expander("止盈止損 (TP/SL)"):
             new_tp = st.number_input("止盈", 0.0)
@@ -600,7 +600,6 @@ if df is not None and not df.empty:
 
                 clr = "#00C853" if u_pnl >= 0 else "#FF3D00"
                 icon = "🟢" if pos['type'] == 'Long' else "🔴"
-                # Updated Card with Margin info
                 st.markdown(f"""
                 <div style="background-color: #262730; padding: 12px; border-radius: 8px; border-left: 5px solid {clr}; margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; font-size: 13px; color: #ccc;">
