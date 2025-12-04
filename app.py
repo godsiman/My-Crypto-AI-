@@ -9,10 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v78.0)", layout="wide", page_icon="🏦")
-
-# [新排版] 標題區
-st.markdown("### 🏦 全方位戰情室 AI (v78.0 排版重構版)")
+st.set_page_config(page_title="全方位戰情室 AI (v79.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v79.0 專業會計版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -23,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v78.json"
+DATA_FILE = "trade_data_v79.json"
 
 def save_data():
     data = {
@@ -68,7 +66,6 @@ def fmt_price(val):
     if val is None: return "N/A"
     try:
         valf = float(val)
-        # [精度] 小於 1.0 顯示 6 位小數
         if valf < 1.0: return f"${valf:.6f}"
         elif valf < 20: return f"${valf:.4f}"
         else: return f"${valf:,.2f}"
@@ -85,6 +82,17 @@ def get_current_price(sym):
             return float(hist['Close'].iloc[-1])
     except: pass
     return None
+
+# --- [新功能] 計算凍結資金 ---
+def get_locked_funds():
+    locked = 0.0
+    # 累加持倉保證金
+    for p in st.session_state.positions:
+        locked += float(p.get('margin', 0.0))
+    # 累加掛單保證金
+    for o in st.session_state.pending_orders:
+        locked += float(o.get('margin', 0.0))
+    return locked
 
 # --- Indicators ---
 def calculate_indicators(df):
@@ -206,18 +214,25 @@ def manage_position_dialog(i, pos, current_price):
             st.toast("✅ 更新成功")
             st.rerun()
 
+# --- [重點修正] 平倉邏輯：只結算盈虧，不退本金(因為本來就沒扣) ---
 def close_position(pos_index, percentage, reason, exit_price):
     if pos_index >= len(st.session_state.positions): return
     pos = st.session_state.positions[pos_index]
+    
     close_ratio = percentage / 100.0
     margin = float(pos.get('margin', 0))
-    close_margin = margin * close_ratio
+    close_margin = margin * close_ratio # 這次要平掉的保證金部分
+    
     direction = 1 if pos.get('type') == 'Long' else -1
     entry = float(pos.get('entry', 1))
     lev = float(pos.get('lev', 1))
+    
+    # 計算盈虧 (PnL)
     pnl = close_margin * (((exit_price - entry) / entry) * lev * direction)
     
-    st.session_state.balance += (close_margin + pnl)
+    # 資金變動：餘額只加上盈虧 (賺錢加，賠錢減)
+    st.session_state.balance += pnl
+    
     st.session_state.history.append({
         "時間": datetime.now().strftime("%m-%d %H:%M"),
         "幣種": pos.get('symbol'),
@@ -226,14 +241,19 @@ def close_position(pos_index, percentage, reason, exit_price):
         "盈虧": round(pnl, 2),
         "原因": reason
     })
-    if percentage == 100: st.session_state.positions.pop(pos_index)
-    else: st.session_state.positions[pos_index]['margin'] -= close_margin
+
+    if percentage == 100:
+        st.session_state.positions.pop(pos_index)
+    else:
+        st.session_state.positions[pos_index]['margin'] -= close_margin
+    
     save_data()
 
+# --- [重點修正] 撤單邏輯：不退錢(因為本來就沒扣) ---
 def cancel_order(idx):
     if idx < len(st.session_state.pending_orders):
-        ord = st.session_state.pending_orders.pop(idx)
-        st.session_state.balance += float(ord.get('margin', 0))
+        st.session_state.pending_orders.pop(idx)
+        # 這裡不需要加回 balance，因為下單時沒扣 balance，只是佔用了可用額度
         save_data()
         st.toast("已撤銷")
 
@@ -285,20 +305,37 @@ if ai_res and df_chart is not None:
         rec_tp = rec_entry - (atr * 3)
         rec_sl = rec_entry + (atr * 1.5)
 
-    # --- [全新排版] 使用原生 Columns + Metric，確保字體完整不被切 ---
-    st.title(f"{symbol}") # 超大標題
-    
-    # 決定價格顯示格式
-    if curr_price < 1.0:
-        price_val = f"${curr_price:.6f}"
-    else:
-        price_val = f"${curr_price:,.2f}"
-
-    # 計算漲跌顏色 (用於 Metric)
+    # --- Header UI ---
+    c1, c2, c3 = st.columns([2, 1, 1])
     is_up = df_chart.iloc[-1]['Close'] >= df_chart.iloc[-1]['Open']
-    delta_color = "normal" if is_up else "inverse" # Streamlit metric 綠色是正，紅色是負
+    p_color = "#00C853" if is_up else "#FF3D00"
+    
+    if curr_price < 1.0:
+        price_display = f"${curr_price:.6f}"
+    else:
+        price_display = f"${curr_price:,.2f}"
 
-    # 計算總未結盈虧
+    c1.markdown(f"""
+    <div style='
+        display: flex; 
+        align-items: center; 
+        line-height: 1.5; 
+        padding-top: 5px; 
+        padding-bottom: 5px;
+        white-space: nowrap;
+        overflow: visible;
+    '>
+        <span style='font-size: 40px; font-weight: bold; margin-right: 15px; color: #ffffff;'>{symbol}</span>
+        <span style='font-size: 30px; color: #cccccc; margin-right: 15px;'>({interval_ui})</span>
+        <span style='font-size: 42px; color: {p_color}; font-weight: bold;'>{price_display}</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # [資金計算]
+    balance = st.session_state.balance # 錢包餘額 (本金)
+    locked = get_locked_funds()        # 凍結資金 (保證金)
+    available = balance - locked       # 可用餘額
+    
     total_u_pnl = 0
     for p in st.session_state.positions:
         try:
@@ -307,12 +344,14 @@ if ai_res and df_chart is not None:
                 d = 1 if p['type']=='Long' else -1
                 total_u_pnl += p['margin'] * (((cur - p['entry'])/p['entry']) * p['lev'] * d)
         except: pass
+    
+    equity = balance + total_u_pnl # 權益 (本金 + 未結盈虧)
 
-    # 三欄式大指標佈局
+    # 指標卡片 (顯示 錢包餘額 / 可用餘額 / 權益)
     m1, m2, m3 = st.columns(3)
-    m1.metric(f"現價 ({interval_ui})", price_val, delta=ai_res['direction'])
-    m2.metric("可用餘額", f"${st.session_state.balance:,.2f}")
-    m3.metric("總未結盈虧", f"${total_u_pnl:+.2f}")
+    m1.metric("錢包餘額 (Wallet)", f"${balance:,.2f}")
+    m2.metric("可用餘額 (Available)", f"${available:,.2f}")
+    m3.metric("權益 (Equity)", f"${equity:,.2f}", delta=f"{total_u_pnl:+.2f}")
 
     st.divider()
 
@@ -356,8 +395,9 @@ if ai_res and df_chart is not None:
                 t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
 
             if st.button("🚀 下單 / 掛單", type="primary", use_container_width=True):
-                if amt > st.session_state.balance:
-                    st.error("餘額不足！")
+                # [重點修正] 下單檢查的是「可用餘額」
+                if amt > available:
+                    st.error(f"可用餘額不足！ (可用: ${available:.2f})")
                 else:
                     entry_price = curr_price if t_entry == 0 else t_entry
                     new_pos = {
@@ -372,11 +412,10 @@ if ai_res and df_chart is not None:
                     }
                     if t_entry == 0:
                         st.session_state.positions.append(new_pos)
-                        st.session_state.balance -= amt
+                        # [修正] 這裡不扣 balance，只增加 locked (由 get_locked_funds 自動計算)
                         st.toast(f"✅ 市價成交！")
                     else:
                         st.session_state.pending_orders.append(new_pos)
-                        st.session_state.balance -= amt
                         st.toast(f"⏳ 掛單提交！")
                     save_data()
                     st.rerun()
@@ -400,7 +439,7 @@ if ai_res and df_chart is not None:
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     
-                    # [保留防崩潰] 使用 on_click
+                    # [保留防崩潰]
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
@@ -422,7 +461,7 @@ if ai_res and df_chart is not None:
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
                 
-                # [保留防崩潰] 使用 on_click
+                # [保留防崩潰]
                 c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
                     
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
