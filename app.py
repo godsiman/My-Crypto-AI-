@@ -9,9 +9,9 @@ import json
 import os
 
 # --- Page setup ---
-# [確認] 標題為 v76.0
-st.set_page_config(page_title="全方位戰情室 AI (v76.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v76.0 字體放大版)")
+# [確認] 標題為 v77.0
+st.set_page_config(page_title="全方位戰情室 AI (v77.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v77.0 顯示修復版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -22,7 +22,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v76.json"
+DATA_FILE = "trade_data_v77.json"
 
 def save_data():
     data = {
@@ -67,7 +67,6 @@ def fmt_price(val):
     if val is None: return "N/A"
     try:
         valf = float(val)
-        # [精度] 小於 1.0 顯示 6 位小數
         if valf < 1.0: return f"${valf:.6f}"
         elif valf < 20: return f"${valf:.4f}"
         else: return f"${valf:,.2f}"
@@ -168,7 +167,7 @@ def on_input_change():
         if st.session_state.market == "加密貨幣" and "-" not in val and "USD" not in val: val += "-USD"
         st.session_state.chart_symbol = val
 
-# [核心防崩潰] 導航必須用這個函數
+# [防崩潰] 導航必須用這個函數
 def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
     st.session_state.symbol_input = "" 
@@ -295,13 +294,22 @@ if ai_res and df_chart is not None:
     else:
         price_display = f"${curr_price:,.2f}"
 
-    # [這裡] 字體放大修改區
-    # font-size:35px, color:#e0e0e0 (很亮)
+    # [這裡] CSS 終極修復：強制設定行高與容器樣式
+    # line-height: 1.5 確保字體上下不被切斷
+    # white-space: nowrap 防止換行
     c1.markdown(f"""
-    <div style='display: flex; align-items: baseline;'>
-        <h1 style='margin:0; padding-right:10px;'>{symbol}</h1>
-        <span style='font-size:35px; color:#e0e0e0; font-weight:bold; margin-right:15px;'>({interval_ui})</span>
-        <span style='font-size:40px; color:{p_color}; font-weight:bold;'>{price_display}</span>
+    <div style='
+        display: flex; 
+        align-items: center; 
+        line-height: 1.5; 
+        padding-top: 5px; 
+        padding-bottom: 5px;
+        white-space: nowrap;
+        overflow: visible;
+    '>
+        <span style='font-size: 40px; font-weight: bold; margin-right: 15px; color: #ffffff;'>{symbol}</span>
+        <span style='font-size: 30px; color: #cccccc; margin-right: 15px;'>({interval_ui})</span>
+        <span style='font-size: 42px; color: {p_color}; font-weight: bold;'>{price_display}</span>
     </div>
     """, unsafe_allow_html=True)
     
@@ -401,7 +409,7 @@ if ai_res and df_chart is not None:
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     
-                    # [這裡] 使用 on_click 且傳遞 args
+                    # [防崩潰] 使用 on_click
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
                     c_info.markdown(f"""
@@ -423,7 +431,7 @@ if ai_res and df_chart is not None:
                 o_sym = ord['symbol']
                 c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
                 
-                # [這裡] 使用 on_click 且傳遞 args
+                # [防崩潰] 使用 on_click
                 c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
                     
                 c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
