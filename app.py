@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v80.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v80.0 ROE下單版)")
+st.set_page_config(page_title="全方位戰情室 AI (v81.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v81.0 全面百分比版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v80.json"
+DATA_FILE = "trade_data_v81.json"
 
 def save_data():
     data = {
@@ -186,8 +186,13 @@ def manage_position_dialog(i, pos, current_price):
         margin = float(pos.get('margin', 0))
         d = 1 if pos.get('type') == 'Long' else -1
         u_pnl = margin * (((current_price - entry) / entry) * lev * d)
+        
+        # [計算 %]
+        roe_pct = (u_pnl / margin) * 100 if margin > 0 else 0.0
+        
         color = "green" if u_pnl >= 0 else "red"
-        st.markdown(f"未結盈虧: <span style='color:{color}; font-weight:bold'>${u_pnl:+.2f}</span>", unsafe_allow_html=True)
+        # 顯示雙重資訊：金額 + 百分比
+        st.markdown(f"未結盈虧: <span style='color:{color}; font-weight:bold'>${u_pnl:+.2f} ({roe_pct:+.2f}%)</span>", unsafe_allow_html=True)
     except: pass
 
     tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
@@ -199,6 +204,7 @@ def manage_position_dialog(i, pos, current_price):
             st.rerun()
 
     with tab_tpsl:
+        # 這裡也可以考慮加上 ROE 輸入模式，但為了介面簡潔，暫時維持價格輸入
         c1, c2 = st.columns(2)
         new_tp = c1.number_input("TP", value=float(pos.get('tp', 0)), key=f"ntp_{i}", format="%.6f")
         new_sl = c2.number_input("SL", value=float(pos.get('sl', 0)), key=f"nsl_{i}", format="%.6f")
@@ -308,7 +314,6 @@ if ai_res and df_chart is not None:
     locked = get_locked_funds()
     available = balance - locked
     
-    # [新功能] 計算總盈虧與總回報率
     total_u_pnl = 0.0
     total_margin_used = 0.0
     for p in st.session_state.positions:
@@ -323,14 +328,11 @@ if ai_res and df_chart is not None:
         except: pass
     
     equity = balance + total_u_pnl
-    
-    # 計算整體回報率 (ROE)
     total_roe = (total_u_pnl / total_margin_used * 100) if total_margin_used > 0 else 0.0
 
     m1, m2, m3 = st.columns(3)
     m1.metric("錢包餘額", f"${balance:,.2f}")
     m2.metric("可用餘額", f"${available:,.2f}")
-    # [新功能] 這裡顯示 盈虧金額 (盈虧百分比)
     m3.metric("總未結盈虧", f"${total_u_pnl:+.2f}", delta=f"{total_roe:+.2f}%")
 
     st.divider()
@@ -368,40 +370,31 @@ if ai_res and df_chart is not None:
             st.session_state.trade_amt_box = amt
             
             with st.expander("進階 (止盈止損)", expanded=True):
-                # [新功能] 切換單位
                 mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
-                
-                # 計算基準價格 (市價或掛單價)
                 base_price = curr_price
                 
                 if mode == "價格":
                     t_tp = st.number_input("止盈價格", value=0.0, format="%.6f")
                     t_sl = st.number_input("止損價格", value=0.0, format="%.6f")
                 else:
-                    # ROE 模式：輸入百分比，自動算價格
-                    roe_tp = st.number_input("止盈 ROE % (例如 100)", value=0.0)
-                    roe_sl = st.number_input("止損 ROE % (例如 50)", value=0.0)
+                    roe_tp = st.number_input("止盈 ROE %", value=0.0)
+                    roe_sl = st.number_input("止損 ROE %", value=0.0)
                     
                     t_tp, t_sl = 0.0, 0.0
                     if roe_tp > 0:
                         direction = 1 if "多" in trade_type else -1
-                        # 公式: Entry * (1 + (ROE/100)/Lev * Dir)
                         t_tp = base_price * (1 + (roe_tp / 100) / lev * direction)
-                        st.caption(f"預估止盈價: {fmt_price(t_tp)}")
-                        
+                        st.caption(f"預估止盈: {fmt_price(t_tp)}")
                     if roe_sl > 0:
                         direction = 1 if "多" in trade_type else -1
-                        # 止損是虧損，所以 ROE 要變負的
                         t_sl = base_price * (1 - (roe_sl / 100) / lev * direction)
-                        st.caption(f"預估止損價: {fmt_price(t_sl)}")
+                        st.caption(f"預估止損: {fmt_price(t_sl)}")
 
                 t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
 
             if st.button("🚀 下單 / 掛單", type="primary", use_container_width=True):
-                # 如果有掛單價，重算 TP/SL (因為基準變了)
                 final_entry = curr_price if t_entry == 0 else t_entry
                 
-                # 如果是 ROE 模式，這裡要重新鎖定最終的 TP/SL 價格
                 if mode == "ROE %":
                     direction = 1 if "多" in trade_type else -1
                     if roe_tp > 0: t_tp = final_entry * (1 + (roe_tp / 100) / lev * direction)
@@ -444,16 +437,20 @@ if ai_res and df_chart is not None:
                 if p_cur:
                     d = 1 if pos['type']=='Long' else -1
                     pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
-                    roe = (pnl / pos['margin']) * 100
+                    
+                    # [重點] 計算 ROE %
+                    roe_pct = (pnl / pos['margin']) * 100
+                    
                     clr = "#00C853" if pnl >= 0 else "#FF3D00"
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
+                    # [重點] 顯示金額 + ROE%
                     c_info.markdown(f"""
                     <div style='font-size:14px'>
                         <b>{pos['type']} x{pos['lev']}</b> <span style='color:#aaa'>| 本金 ${pos['margin']:.0f}</span><br>
-                        盈虧: <span style='color:{clr}; font-weight:bold'>${pnl:+.2f} ({roe:+.2f}%)</span>
+                        盈虧: <span style='color:{clr}; font-weight:bold'>${pnl:+.2f} ({roe_pct:+.2f}%)</span>
                     </div>
                     """, unsafe_allow_html=True)
                     
