@@ -10,7 +10,7 @@ from datetime import datetime
 st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
 st.title("🛡️ 全方位戰情室 AI (v29.0 雲端部署版)")
 
-# --- Session 初始化 (無存檔，重新整理即重置) ---
+# --- Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
 if 'position' not in st.session_state: st.session_state.position = None 
 if 'history' not in st.session_state: st.session_state.history = []
@@ -235,9 +235,9 @@ if df is not None:
         if st.session_state.position is None:
             st.markdown("##### 🚀 開立新倉位")
             col_s1, col_s2 = st.columns(2)
-            trade_type = col_s1.selectbox("方向", ["🟢 做多", "🔴 做空"])
-            leverage = col_s2.number_input("槓桿倍數", 1, 125, 20)
-            principal = st.number_input("投入本金 (U)", 10, int(st.session_state.balance), 1000)
+            trade_type = col_s1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"])
+            leverage = col_s2.number_input("槓桿", 1, 125, 20)
+            principal = st.number_input("本金", 10, int(st.session_state.balance), 1000)
             st.caption("自動平倉設定 (選填)")
             set_tp = st.number_input("止盈價格 (TP)", value=0.0)
             set_sl = st.number_input("止損價格 (SL)", value=0.0)
@@ -256,36 +256,25 @@ if df is not None:
                 st.session_state.balance -= principal
                 st.rerun()
         else:
-            # --- 持倉監控 ---
             pos = st.session_state.position
             if pos['symbol'] == symbol:
                 direction = 1 if pos['type'] == 'Long' else -1
                 pnl_pct = ((curr_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
                 pnl_usdt = pos['margin'] * (pnl_pct / 100)
+                liq_price = pos['entry'] * (1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry'] * (1 + 1/pos['lev'])
                 
-                if pos['type'] == 'Long': liq_price = pos['entry'] * (1 - 1/pos['lev'])
-                else: liq_price = pos['entry'] * (1 + 1/pos['lev'])
-                
-                # 自動平倉檢查
                 close_reason = None
-                if (pos['type'] == 'Long' and curr_price <= liq_price) or (pos['type'] == 'Short' and curr_price >= liq_price):
-                    close_reason = "💀 爆倉"
-                elif pos['tp'] > 0 and ((pos['type'] == 'Long' and curr_price >= pos['tp']) or (pos['type'] == 'Short' and curr_price <= pos['tp'])):
-                    close_reason = "🎯 止盈觸發"
-                elif pos['sl'] > 0 and ((pos['type'] == 'Long' and curr_price <= pos['sl']) or (pos['type'] == 'Short' and curr_price >= pos['sl'])):
-                    close_reason = "🛡️ 止損觸發"
+                if (pos['type'] == 'Long' and curr_price <= liq_price) or (pos['type'] == 'Short' and curr_price >= liq_price): close_reason = "💀 爆倉"
+                elif pos['tp'] > 0 and ((pos['type'] == 'Long' and curr_price >= pos['tp']) or (pos['type'] == 'Short' and curr_price <= pos['tp'])): close_reason = "🎯 止盈觸發"
+                elif pos['sl'] > 0 and ((pos['type'] == 'Long' and curr_price <= pos['sl']) or (pos['type'] == 'Short' and curr_price >= pos['sl'])): close_reason = "🛡️ 止損觸發"
                 
-                if close_reason:
-                    close_position(curr_price, 100, close_reason)
-                    st.rerun()
+                if close_reason: close_position(curr_price, 100, close_reason); st.rerun()
 
                 st.info(f"🔥 **{pos['type']} {pos['lev']}x**")
                 st.caption(f"🕒 開倉: {pos['time']}")
-                st.write(f"💵 均價: **${pos['entry']:.2f}**") # 顯示開倉價
-                
+                st.write(f"💵 本金: **${pos['margin']:.2f}** | 均價: **${pos['entry']:.2f}**")
                 c1, c2 = st.columns(2)
-                # 修正損益顯示位數
-                c1.metric("損益", f"${pnl_usdt:.2f}", f"{pnl_pct:.2f}%")
+                c1.metric("未實現損益", f"${pnl_usdt:.2f}", f"{pnl_pct:.2f}%")
                 c2.write(f"💀 爆倉: {liq_price:.2f}")
                 
                 with st.expander("📝 修改訂單 / 平倉"):
@@ -338,7 +327,7 @@ if df is not None:
                 entry_zone = f"${fib_low:,.2f} ~ ${fib_high:,.2f}"
             
             if last['Close'] >= tp1:
-                tp1 = ll + diff * 1.272; tp2 = ll + diff * 1.618; risk_warning = "價格創高，止盈上移"
+                tp1 = ll + diff * 1.272; tp2 = ll + diff * 1.618; risk_warning = "價格已創新高，止盈上移"
             elif last['Close'] < buy_sl: risk_warning = "❌ 結構破壞 (跌破止損)。"; score = 0
         else:
             tp1 = ll; tp2 = lh - diff * 1.618
@@ -347,8 +336,9 @@ if df is not None:
                 entry_zone = f"${last['Close']:,.2f} (現價優)"
             else:
                 entry_zone = f"${fib_low:,.2f} ~ ${fib_high:,.2f}"
+            
             if last['Close'] <= tp1:
-                tp1 = lh - diff * 1.272; tp2 = lh - diff * 1.618; risk_warning = "價格創低，止盈下移"
+                tp1 = lh - diff * 1.272; tp2 = lh - diff * 1.618; risk_warning = "價格已創新低，止盈下移"
             elif last['Close'] > sell_sl: risk_warning = "❌ 結構破壞 (突破止損)。"; score = 0
 
     st.info("🛡️ **AI 實戰風控報告**")
@@ -357,7 +347,7 @@ if df is not None:
 
     m1, m2, m3, m4 = st.columns(4)
     action_label = "觀望"
-    if risk_warning and "破" in risk_warning: action_label = "⛔ " + risk_warning; score_display = "N/A"
+    if risk_warning and "破" in risk_warning: action_label = "⛔ " + (risk_warning[:6] + "..." if len(risk_warning)>6 else risk_warning); score_display = "N/A"
     else:
         if score >= 8: action_label = "🔥 強力買進"
         elif score >= 5: action_label = "🟢 買進"
