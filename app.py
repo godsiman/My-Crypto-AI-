@@ -48,7 +48,7 @@ def load_data():
                 data = json.load(f)
                 st.session_state.balance = float(data.get("balance", 10000.0))
                 
-                # 強制清洗數據，轉為 float
+                # 強制清洗數據，轉為 float，防止報錯
                 clean_pos = []
                 for p in data.get("positions", []):
                     try:
@@ -74,7 +74,7 @@ def load_data():
                 st.session_state.history = data.get("history", [])
         except: pass
 
-# --- State Init ---
+# --- State Init (保證變數存在) ---
 if 'init_done' not in st.session_state:
     st.session_state.balance = 10000.0
     st.session_state.positions = []
@@ -88,13 +88,14 @@ if 'init_done' not in st.session_state:
 
 # --- Callbacks ---
 def set_amt(ratio):
+    # 直接修改輸入框綁定的 key
     val = float(st.session_state.balance * ratio)
     if val < 0: val = 0.0
     st.session_state.trade_amt_box = val
 
 def update_symbol():
-    # 當用戶在側邊欄改變選擇時，直接更新全域 symbol
-    st.session_state.chart_symbol = st.session_state.temp_symbol
+    # 當側邊欄選擇改變時觸發
+    pass
 
 # --- Helpers ---
 def fmt_price(val):
@@ -169,9 +170,9 @@ tw_stock_dict = {"2330 台積電":"2330", "2454 聯發科":"2454", "2317 鴻海"
 # 選擇列表
 target_list = crypto_list if market == "加密貨幣" else (us_stock_list if market == "美股" else list(tw_stock_dict.keys()))
 
-# [修復] 使用 temp_symbol 加上 on_change 回調，實現選了就跳轉
-select_val = st.sidebar.selectbox("快速選擇", target_list, key="temp_select")
-search_val = st.sidebar.text_input("代碼搜尋 (例如 2330)", key="temp_search")
+# [修復] 使用 temp_symbol 加上 button，避免 session 衝突
+select_val = st.sidebar.selectbox("快速選擇", target_list)
+search_val = st.sidebar.text_input("代碼搜尋 (例如 2330)")
 
 # 決定最終標的字串
 raw_symbol = search_val.strip().upper() if search_val.strip() else select_val
@@ -184,10 +185,10 @@ elif market == "台股":
     if final_symbol.isdigit(): final_symbol += ".TW"
     elif not final_symbol.endswith(".TW"): final_symbol += ".TW"
 
-# 自動更新 (如果計算出的 symbol 和 session 裡的不同，直接更新)
-if final_symbol != st.session_state.chart_symbol:
+# 側邊欄更新機制
+if st.sidebar.button("🚀 載入 K 線"):
     st.session_state.chart_symbol = final_symbol
-    st.rerun() # 強制刷新頁面以載入新數據
+    st.rerun()
 
 symbol = st.session_state.chart_symbol 
 
@@ -201,12 +202,24 @@ show_orders = st.sidebar.checkbox("圖表掛單", True)
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("💰 錢包管理"):
-    st.caption(f"餘額: ${st.session_state.balance:,.2f}")
-    if st.button("🔄 重置為 1W U"): st.session_state.balance = 10000.0; st.session_state.positions = []; st.session_state.pending_orders = []; save_data(); st.rerun()
-    if st.button("➕ 補血 +1W U"): st.session_state.balance += 10000.0; save_data(); st.rerun()
+    # 安全讀取 balance
+    bal = st.session_state.get('balance', 0.0)
+    st.caption(f"可用餘額: ${bal:,.2f}")
+    if st.button("🔄 重置為 1W U"):
+        st.session_state.balance = 10000.0
+        st.session_state.positions = []
+        st.session_state.pending_orders = []
+        st.session_state.history = []
+        save_data()
+        st.rerun()
+    if st.button("➕ 補血 +1W U"):
+        st.session_state.balance += 10000.0
+        save_data()
+        st.rerun()
     if st.button("🧨 強制清空數據"): 
         if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
-        st.session_state.clear(); st.rerun()
+        st.session_state.positions = []
+        st.rerun()
 
 def get_params(ui_selection):
     if "15分鐘" in ui_selection: return "5d", "15m"
@@ -342,8 +355,6 @@ if df is not None and not df.empty:
     # Analysis
     pivots = calculate_zigzag(df); bull_fvg, bear_fvg = calculate_fvg(df)
     ai_res = run_ai_analysis(df, pivots, bull_fvg, bear_fvg)
-    if 'ai_entry' not in st.session_state or st.session_state.ai_entry == 0:
-        st.session_state.ai_entry = ai_res['entry']; st.session_state.ai_tp = ai_res['tp']; st.session_state.ai_sl = ai_res['sl']
 
     c1, c2, c3 = st.columns([1.5, 1, 1.5])
     with c1:
@@ -427,7 +438,7 @@ if df is not None and not df.empty:
     with tab_trade:
         order_type = st.radio("類型", ["⚡ 市價", "⏱️ 掛單"], horizontal=True, label_visibility="collapsed")
         c1, c2 = st.columns(2)
-        side = c1.selectbox("方向", ["🟢 做多", "🔴 做空"])
+        side = c1.selectbox("方向", ["🟢 做多", "🔴 做空"], index=0 if ai_res['dir']=="做多 (Long)" else 1)
         lev = c2.number_input("槓桿", 1, 200, 20)
         
         def_p = curr_price
@@ -440,7 +451,7 @@ if df is not None and not df.empty:
         if c_p3.button("75%", use_container_width=True, on_click=set_amt, args=(0.75,)): pass
         if c_p4.button("Max", use_container_width=True, on_click=set_amt, args=(1.00,)): pass
         
-        amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_box), min_value=1.0, key="trade_amt_box_input", on_change=lambda: st.session_state.update({"trade_amt_box": st.session_state.trade_amt_box_input}))
+        amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_box), min_value=1.0, key="trade_amt_box")
         
         with st.expander("止盈止損"):
             new_tp = st.number_input("止盈", value=float(st.session_state.ai_tp))
