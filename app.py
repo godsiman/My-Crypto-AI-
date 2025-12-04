@@ -9,7 +9,7 @@ from datetime import datetime
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
-st.title("🏦 全方位戰情室 AI (v31.2 UI優化修正版)")
+st.title("🏦 全方位戰情室 AI (v32.0 旗艦完整版)")
 
 # --- Session init ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
@@ -41,7 +41,7 @@ def get_current_price(sym):
         return None
     return None
 
-# --- Sidebar UI: market + symbol selection (大幅修改區塊) ---
+# --- Sidebar UI: market + symbol selection ---
 st.sidebar.header("🎯 市場與標的")
 
 # 1. 市場選擇
@@ -65,7 +65,7 @@ tw_stock_dict = {
 }
 
 # 3. 處理下拉選單邏輯
-raw_symbol = "" # 用來暫存未加後綴的代號
+raw_symbol = "" 
 
 if market == "加密貨幣":
     selected_item = st.sidebar.selectbox("🔥 常見加密貨幣", crypto_list)
@@ -76,7 +76,7 @@ elif market == "美股":
 else: # 台股
     tw_display_list = list(tw_stock_dict.keys())
     selected_item = st.sidebar.selectbox("🇹🇼 常見台股", tw_display_list)
-    raw_symbol = tw_stock_dict[selected_item] # 從中文名稱取出代號 (例如 2330)
+    raw_symbol = tw_stock_dict[selected_item] # 從中文名稱取出代號
 
 # 4. 處理手動搜尋 (優先權高於選單)
 search_input = st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", placeholder="例如: 2330 或 BTC")
@@ -84,11 +84,11 @@ if search_input.strip():
     raw_symbol = search_input.strip().upper()
 
 # 5. 格式化 Symbol (加上後綴) 並存入 Session
-# 這是修正「切換標的後下單錯誤」的關鍵：確保每次循環 symbol 都被正確計算與更新
+# 這是修正「切換標的後下單錯誤」的關鍵
 final_symbol = raw_symbol
 
 if market == "加密貨幣":
-    # 如果輸入 BTC，自動變 BTC-USD；如果使用者自己打了 BTC-USD 就不重複加
+    # 如果輸入 BTC，自動變 BTC-USD
     if "USD" not in final_symbol and "-" not in final_symbol:
         final_symbol += "-USD"
 elif market == "台股":
@@ -96,9 +96,7 @@ elif market == "台股":
     if final_symbol.isdigit() or (len(final_symbol) == 4 and final_symbol.isdigit()):
         final_symbol += ".TW"
     elif not final_symbol.endswith(".TW") and not final_symbol.endswith(".TWO"):
-        # 簡單防呆，如果不是完整格式也沒數字，假設它是上市股票
         final_symbol += ".TW"
-# 美股通常不需要後綴，直接用 AAPL 即可
 
 # 更新 Session State，並定義全域變數 symbol 供後續使用
 st.session_state.chart_symbol = final_symbol
@@ -302,7 +300,6 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
     st.rerun()
 
 # --- Main ---
-# 使用已經在上方處理好的全域變數 symbol，不依賴可能過時的 session_state
 df = get_data(symbol, period, interval)
 
 if df is not None and not df.empty:
@@ -312,43 +309,75 @@ if df is not None and not df.empty:
     st.sidebar.markdown("---")
     with st.sidebar.expander("🏦 我的錢包與持倉", expanded=True):
         st.metric("💰 總資產 (USDT)", f"${st.session_state.balance:,.2f}")
+        
         if st.session_state.positions:
             st.markdown("##### 🔥 持倉列表")
             for i, pos in list(enumerate(st.session_state.positions)):
                 live_price = curr_price if pos['symbol'] == symbol else get_current_price(pos['symbol'])
+                
                 if live_price:
+                    # 計算 PnL
                     direction = 1 if pos['type'] == 'Long' else -1
                     try: pnl_pct = ((live_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
                     except: pnl_pct = 0
                     pnl_usdt = pos['margin'] * (pnl_pct / 100)
+                    
                     if pos['type'] == 'Long': liq = pos['entry'] * (1 - 1/pos['lev'])
                     else: liq = pos['entry'] * (1 + 1/pos['lev'])
-                    with st.container():
-                        c_title, c_jump = st.columns([3,1])
-                        c_title.markdown(f"**#{i+1} {pos['symbol']}**")
-                        # 修正這裡：跳轉時也要同時更新 session_state
-                        if pos['symbol'] != symbol and c_jump.button("🔍", key=f"jump_{i}"):
-                            st.session_state.chart_symbol = pos['symbol']
-                            st.rerun()
-                        c1,c2 = st.columns(2)
-                        c1.write(f"{pos['type']} {pos['lev']}x")
-                        color = "green" if pnl_usdt >= 0 else "red"
-                        c2.markdown(f":{color}[**{pnl_usdt:+.2f} U**]")
-                        st.caption(f"均價: {fmt_price(pos['entry'])}")
-                        reason = None
-                        if (pos['type']=='Long' and live_price <= liq) or (pos['type']=='Short' and live_price >= liq):
-                            reason="💀 爆倉"
-                        elif pos.get('tp',0)>0 and ((pos['type']=='Long' and live_price >= pos['tp']) or (pos['type']=='Short' and live_price <= pos['tp'])):
-                            reason="🎯 止盈"
-                        elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live_price <= pos['sl']) or (pos['type']=='Short' and live_price >= pos['sl'])):
-                            reason="🛡️ 止損"
-                        if reason:
-                            close_position(i, 100, reason, live_price); break
-                        if st.button(f"平倉", key=f"close_{i}"):
-                            close_position(i, 100, "手動", live_price); break
-                        st.divider()
+
+                    # UI: 標題與跳轉
+                    c_title, c_jump = st.columns([4, 1])
+                    c_title.markdown(f"**#{i+1} {pos['symbol']}**")
+                    if pos['symbol'] != symbol and c_jump.button("🔍", key=f"jump_{i}"):
+                        st.session_state.chart_symbol = pos['symbol']
+                        st.rerun()
+
+                    # UI: 交易所風格卡片
+                    pnl_color = "#00C853" if pnl_usdt >= 0 else "#FF3D00"
+                    side_icon = "🟢" if pos['type'] == 'Long' else "🔴"
+                    open_time = pos.get('time', '剛剛') 
+
+                    st.markdown(f"""
+                    <div style="background-color: #262730; padding: 10px; border-radius: 5px; margin-bottom: 10px; border-left: 4px solid {pnl_color};">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #aaaaaa; margin-bottom: 4px;">
+                            <span>{side_icon} {pos['type']} x{pos['lev']}</span>
+                            <span>🕒 {open_time}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                            <div>
+                                <div style="font-size: 12px; color: #aaaaaa;">未結盈虧 (U)</div>
+                                <div style="font-size: 16px; font-weight: bold; color: {pnl_color};">{pnl_usdt:+.2f} U</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 12px; color: #aaaaaa;">回報率 (%)</div>
+                                <div style="font-size: 16px; font-weight: bold; color: {pnl_color};">{pnl_pct:+.2f}%</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 11px; color: #cccccc; display: flex; justify-content: space-between;">
+                            <span>開倉: {fmt_price(pos['entry'])}</span>
+                            <span>現價: {fmt_price(live_price)}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # 邏輯: 自動與手動平倉
+                    reason = None
+                    if (pos['type']=='Long' and live_price <= liq) or (pos['type']=='Short' and live_price >= liq):
+                        reason="💀 爆倉"
+                    elif pos.get('tp',0)>0 and ((pos['type']=='Long' and live_price >= pos['tp']) or (pos['type']=='Short' and live_price <= pos['tp'])):
+                        reason="🎯 止盈"
+                    elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live_price <= pos['sl']) or (pos['type']=='Short' and live_price >= pos['sl'])):
+                        reason="🛡️ 止損"
+                    
+                    if reason:
+                        close_position(i, 100, reason, live_price); break
+                    
+                    if st.button(f"平倉", key=f"close_{i}", use_container_width=True):
+                        close_position(i, 100, "手動", live_price); break
+                    
+                    st.divider() 
         else:
-            st.info("空倉中，等待機會...")
+            st.info("目前無持倉，等待交易機會...")
         
         # Open new position area
         st.markdown("##### 🚀 開立新倉位")
@@ -359,16 +388,16 @@ if df is not None and not df.empty:
         with st.expander("進階設定 (TP/SL)"):
             set_tp = st.number_input("止盈 TP", value=0.0, format="%.8f", key="new_tp")
             set_sl = st.number_input("止損 SL", value=0.0, format="%.8f", key="new_sl")
-        if st.button("確認下單", type="primary"):
+        if st.button("確認下單", type="primary", use_container_width=True):
             if principal > st.session_state.balance:
                 st.error("餘額不足！")
             else:
-                # 關鍵修正：這裡的 symbol 使用的是全域變數 symbol (已經過格式化修正)
-                # 不會再誤用舊的 Session State
+                # 這裡強制使用全域變數 symbol，避免下單錯誤
                 new_pos = {"symbol": symbol, "type": "Long" if "做多" in trade_type else "Short",
                            "entry": curr_price, "lev": leverage, "margin": principal,
                            "tp": set_tp, "sl": set_sl, "time": datetime.now().strftime('%m-%d %H:%M')}
                 st.session_state.positions.append(new_pos); st.session_state.balance -= principal; st.rerun()
+        
         if st.session_state.history:
             with st.sidebar.expander("📜 歷史交易"):
                 hist_df = pd.DataFrame(st.session_state.history[::-1]); st.dataframe(hist_df[['幣種','獲利%','損益(U)','時間']], hide_index=True)
