@@ -6,16 +6,55 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.signal import argrelextrema
 from datetime import datetime
+import json
+import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
-st.title("🏦 全方位戰情室 AI (v36.0 預掛單全能版)")
+st.title("🏦 全方位戰情室 AI (v37.0 永續存檔版)")
+
+# --- Persistence System (存檔系統) ---
+DATA_FILE = "trade_data.json"
+
+def save_data():
+    """將當前 Session State 存入 JSON 檔案"""
+    data = {
+        "balance": st.session_state.balance,
+        "positions": st.session_state.positions,
+        "pending_orders": st.session_state.pending_orders,
+        "history": st.session_state.history
+    }
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        st.error(f"存檔失敗: {e}")
+
+def load_data():
+    """從 JSON 檔案讀取資料並還原"""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r") as f:
+                data = json.load(f)
+                st.session_state.balance = data.get("balance", 10000.0)
+                st.session_state.positions = data.get("positions", [])
+                st.session_state.pending_orders = data.get("pending_orders", [])
+                st.session_state.history = data.get("history", [])
+        except Exception as e:
+            st.error(f"讀檔失敗: {e}")
+    else:
+        # 初始化預設值
+        if 'balance' not in st.session_state: st.session_state.balance = 10000.0
+        if 'positions' not in st.session_state: st.session_state.positions = []
+        if 'pending_orders' not in st.session_state: st.session_state.pending_orders = []
+        if 'history' not in st.session_state: st.session_state.history = []
 
 # --- Session init ---
-if 'balance' not in st.session_state: st.session_state.balance = 10000.0
-if 'positions' not in st.session_state: st.session_state.positions = []     # 已成交持倉
-if 'pending_orders' not in st.session_state: st.session_state.pending_orders = [] # 未成交掛單
-if 'history' not in st.session_state: st.session_state.history = []
+# 在程式啟動時優先讀取檔案
+if 'data_loaded' not in st.session_state:
+    load_data()
+    st.session_state.data_loaded = True
+
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 if 'market' not in st.session_state: st.session_state.market = "加密貨幣"
 
@@ -288,6 +327,8 @@ def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=
     else:
         st.session_state.positions[pos_index]['margin'] -= close_margin
         st.toast(f"✅ {pos['symbol']} 部分平倉 ({percentage}%)，入袋 {pnl_usdt:.2f} U")
+    
+    save_data() # 平倉後存檔
     st.rerun()
 
 def cancel_order(pos_index, order_type):
@@ -299,6 +340,7 @@ def cancel_order(pos_index, order_type):
             st.session_state.positions[pos_index]['sl'] = 0.0
             st.session_state.positions[pos_index]['sl_ratio'] = 0
         st.toast(f"🗑️ 已撤銷 {order_type} 委託單")
+        save_data() # 修改訂單後存檔
         st.rerun()
 
 def cancel_pending_order(idx):
@@ -306,6 +348,7 @@ def cancel_pending_order(idx):
         ord = st.session_state.pending_orders.pop(idx)
         st.session_state.balance += ord['margin'] # 退還本金
         st.toast(f"🗑️ 已撤銷掛單: {ord['symbol']} @ {fmt_price(ord['entry'])}")
+        save_data() # 撤單後存檔
         st.rerun()
 
 # --- Main ---
@@ -316,21 +359,24 @@ if df is not None and not df.empty:
 
     # --- Check Pending Orders Logic ---
     # 檢查是否有掛單成交
+    pending_updated = False
     if st.session_state.pending_orders:
         for i in reversed(range(len(st.session_state.pending_orders))):
             ord = st.session_state.pending_orders[i]
-            # 簡單模擬成交：多單價格<=掛單價，空單價格>=掛單價
-            # 這裡假設 user 想掛的是 Limit 單 (低接/高空)
+            # 簡單模擬成交
             is_filled = False
             if ord['type'] == 'Long' and curr_price <= ord['entry']: is_filled = True
             elif ord['type'] == 'Short' and curr_price >= ord['entry']: is_filled = True
             
             if is_filled:
                 new_pos = st.session_state.pending_orders.pop(i)
-                new_pos['time'] = datetime.now().strftime('%m-%d %H:%M') # 更新成交時間
-                # 因為掛單時本金已扣除，這裡只需轉移到 positions
+                new_pos['time'] = datetime.now().strftime('%m-%d %H:%M')
                 st.session_state.positions.append(new_pos)
                 st.toast(f"🔔 掛單成交！{new_pos['symbol']} {new_pos['type']} @ {fmt_price(new_pos['entry'])}")
+                pending_updated = True
+    
+    if pending_updated:
+        save_data() # 如果有掛單成交，存檔
 
     # Sidebar wallet/positions
     st.sidebar.markdown("---")
@@ -446,7 +492,9 @@ if df is not None and not df.empty:
                             if col_upd.button("更新", key=f"btn_mod_tp_{i}", use_container_width=True):
                                 st.session_state.positions[i]['tp'] = new_val
                                 st.session_state.positions[i]['tp_ratio'] = new_ratio
-                                st.toast("✅ 止盈單已更新"); st.rerun()
+                                st.toast("✅ 止盈單已更新")
+                                save_data()
+                                st.rerun()
                             if col_can.button("撤銷", key=f"btn_can_tp_{i}", use_container_width=True): cancel_order(i, 'TP')
 
                     if pos.get('sl', 0) > 0:
@@ -466,7 +514,9 @@ if df is not None and not df.empty:
                             if col_upd_sl.button("更新", key=f"btn_mod_sl_{i}", use_container_width=True):
                                 st.session_state.positions[i]['sl'] = new_val_sl
                                 st.session_state.positions[i]['sl_ratio'] = new_ratio_sl
-                                st.toast("✅ 止損單已更新"); st.rerun()
+                                st.toast("✅ 止損單已更新")
+                                save_data()
+                                st.rerun()
                             if col_can_sl.button("撤銷", key=f"btn_can_sl_{i}", use_container_width=True): cancel_order(i, 'SL')
 
                     if pos.get('tp', 0) == 0 and pos.get('sl', 0) == 0:
@@ -494,7 +544,9 @@ if df is not None and not df.empty:
                                 if final_sl_price > 0:
                                     st.session_state.positions[i]['sl'] = final_sl_price
                                     st.session_state.positions[i]['sl_ratio'] = ratio_choice
-                                st.toast("✅ 委託單已添加"); st.rerun()
+                                st.toast("✅ 委託單已添加")
+                                save_data()
+                                st.rerun()
                         st.divider()
 
             if not has_orders and not st.session_state.positions and not st.session_state.pending_orders:
@@ -559,6 +611,7 @@ if df is not None and not df.empty:
                     st.session_state.balance -= principal # 預扣保證金
                     st.toast(f"⏳ 掛單已提交！當 {symbol} 到達 {entry_price} 時成交")
                 
+                save_data() # 下單後存檔
                 st.rerun()
 
     # Analysis
@@ -651,7 +704,6 @@ if df is not None and not df.empty:
                 if pos['symbol'] == symbol:
                     if pos.get('tp', 0) > 0: fig.add_hline(y=pos['tp'], line_dash="dashdot", line_color="#00FF00", annotation_text=f"止盈 {pos.get('tp_ratio',100)}% @ {fmt_price(pos['tp'])}")
                     if pos.get('sl', 0) > 0: fig.add_hline(y=pos['sl'], line_dash="dashdot", line_color="#FF0000", annotation_text=f"止損 {pos.get('sl_ratio',100)}% @ {fmt_price(pos['sl'])}")
-        # 顯示 Pending Entry (黃色線)
         if st.session_state.pending_orders:
             for ord in st.session_state.pending_orders:
                 if ord['symbol'] == symbol:
