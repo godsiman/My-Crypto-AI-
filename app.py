@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v89.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v89.0 機構戰法版)")
+st.set_page_config(page_title="全方位戰情室 AI (v90.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v90.0 白話投顧版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -88,32 +88,30 @@ def get_locked_funds():
     for o in st.session_state.pending_orders: locked += float(o.get('margin', 0.0))
     return locked
 
-# --- Advanced Indicators (VWAP, ADX, Fib) ---
+# --- Indicators ---
 def calculate_indicators(df):
     if df is None or df.empty: return df
     df = df.copy()
     
-    # 1. VWAP (累積成交量加權平均)
+    # VWAP
     df['Typical_Price'] = (df['High'] + df['Low'] + df['Close']) / 3
     df['VP'] = df['Typical_Price'] * df['Volume']
     df['Total_VP'] = df['VP'].cumsum()
     df['Total_Vol'] = df['Volume'].cumsum()
-    df['VWAP'] = df['Total_VP'] / df['Total_Vol'] # 簡化版 Rolling VWAP
+    df['VWAP'] = df['Total_VP'] / df['Total_Vol']
     
-    # 2. ADX (趨勢強度)
+    # ADX
     high_diff = df['High'].diff()
     low_diff = -df['Low'].diff()
     df['+DM'] = np.where((high_diff > low_diff) & (high_diff > 0), high_diff, 0.0)
     df['-DM'] = np.where((low_diff > high_diff) & (low_diff > 0), low_diff, 0.0)
     df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
     df['ATR'] = df['TR'].rolling(14).mean()
-    
     df['+DI'] = 100 * (df['+DM'].ewm(alpha=1/14).mean() / df['ATR'])
     df['-DI'] = 100 * (df['-DM'].ewm(alpha=1/14).mean() / df['ATR'])
     df['DX'] = 100 * abs(df['+DI'] - df['-DI']) / (df['+DI'] + df['-DI'])
-    df['ADX'] = df['DX'].ewm(alpha=1/14).mean() # 平滑後即為 ADX
+    df['ADX'] = df['DX'].ewm(alpha=1/14).mean()
 
-    # Basic Indicators
     df['EMA7'] = df['Close'].ewm(span=7).mean()
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA60'] = df['Close'].ewm(span=60).mean()
@@ -154,10 +152,10 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- [大腦升級] 機構級 AI 戰略 ---
+# --- AI Strategy (含口語化邏輯) ---
 @st.cache_data(ttl=120)
 def get_institutional_strategy(symbol, current_interval_ui):
-    # 1. Macro Scan
+    # Macro
     macro_intervals = {"M": ("1mo","5y"), "W": ("1wk","2y"), "D": ("1d","1y")}
     macro_trends = {}
     macro_score = 0
@@ -175,36 +173,35 @@ def get_institutional_strategy(symbol, current_interval_ui):
                     macro_score -= 1
         except: macro_trends[tf] = "未知"
 
-    # 2. Micro Analysis
+    # Micro
     df = get_chart_data(symbol, current_interval_ui)
     if df is None or len(df) < 30: return None
+    last = df.iloc[-1]; prev = df.iloc[-2]
+    micro_score = 0; signals = []
     
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
-    micro_score = 0
-    signals = []
-    
-    # A. VWAP Filter (機構濾網)
-    # 如果價格 > VWAP 且 > EMA20 -> 強勢多頭
+    # VWAP
+    is_above_vwap = False
     if last['Close'] > last['VWAP']:
         signals.append("🏦 站上 VWAP (機構成本之上)")
         micro_score += 1
+        is_above_vwap = True
     else:
         signals.append("⚠️ 跌破 VWAP (機構成本之下)")
         micro_score -= 1
+        is_above_vwap = False
 
-    # B. ADX Filter (趨勢濾網)
+    # ADX
     adx_val = last.get('ADX', 0)
     if adx_val < 20:
-        signals.append("💤 ADX < 20 (盤整/無趨勢) - 建議觀望")
-        micro_score *= 0.5 # 盤整時訊號打折
+        signals.append("💤 ADX < 20 (無趨勢盤整)")
+        micro_score *= 0.5
     elif adx_val > 25:
         signals.append(f"🔥 ADX = {adx_val:.1f} (趨勢形成)")
-        micro_score *= 1.2 # 趨勢強時加分
+        micro_score *= 1.2
 
-    # C. Technicals
+    # Technicals
     if last['Close'] > last['EMA7']:
-        signals.append("⚡ 站上短線 (EMA7) - 攻擊")
+        signals.append("⚡ 站上短線 (EMA7)")
         micro_score += 1.5
     else:
         signals.append("⚠️ 跌破短線 (EMA7)")
@@ -220,49 +217,51 @@ def get_institutional_strategy(symbol, current_interval_ui):
     if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
         signals.append("🚀 MACD 金叉")
         micro_score += 2
-        
-    # 3. Decision
+    
+    # Final Score
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
     direction = "觀望"
-    if final_score >= 2.0: direction = "強力做多 (Strong Buy)"
-    elif final_score >= 0.5: direction = "嘗試做多 (Buy)"
-    elif final_score <= -2.0: direction = "強力做空 (Strong Sell)"
-    elif final_score <= -0.5: direction = "嘗試做空 (Sell)"
     
-    # 4. Fibonacci / Precision Levels
-    # 抓取過去 50 根 K 棒的高低點
-    recent_high = df['High'].tail(50).max()
-    recent_low = df['Low'].tail(50).min()
+    # [口語化] 藍色區塊建議
+    if final_score >= 2.0: 
+        direction = "強力做多 (Strong Buy)"
+        action_msg = "🤖 AI 建議：現在動能超強！別猶豫了，建議直接市價進場追擊！"
+    elif final_score >= 0.5: 
+        direction = "嘗試做多 (Buy)"
+        action_msg = "🤖 AI 建議：趨勢是向上的，但現在價格有點高，掛單等回調再接比較安全。"
+    elif final_score <= -2.0: 
+        direction = "強力做空 (Strong Sell)"
+        action_msg = "🤖 AI 建議：空頭很兇！反彈就是空，不要手軟！"
+    elif final_score <= -0.5: 
+        direction = "嘗試做空 (Sell)"
+        action_msg = "🤖 AI 建議：看起來快跌了，掛高一點做空比較保險。"
+    else:
+        action_msg = "🤖 AI 建議：現在多空不明，先喝杯咖啡觀望一下吧。"
+
+    # [口語化] 綠色區塊 VWAP 解讀
+    if is_above_vwap:
+        vwap_msg = "🟢 大戶還在顧盤！價格在成本線之上，趨勢有支撐，安啦！"
+        vwap_type = "success"
+    else:
+        vwap_msg = "⚠️ 主力好像棄守了...價格跌破成本線，小心被套！"
+        vwap_type = "warning"
+
+    # Levels
     curr_price = last['Close']
     atr = last.get('ATR', curr_price * 0.02)
-    
-    # 斐波那契計算
+    recent_high = df['High'].tail(50).max()
+    recent_low = df['Low'].tail(50).min()
     fib_0618 = recent_low + (recent_high - recent_low) * 0.618
     fib_0382 = recent_low + (recent_high - recent_low) * 0.382
     
     if final_score > 0:
-        # 做多建議：如果現在價格過高，建議回調到 Fib 0.618 或 EMA20 接
         entry_target = max(fib_0618, last['EMA20']) 
-        # 如果市價跟目標價差太遠(>2% ATR)，就掛單；否則市價追
-        if (curr_price - entry_target) > atr:
-            entry = entry_target # 掛單
-            note = "建議回調入場"
-        else:
-            entry = curr_price # 市價
-            note = "動能強，市價入場"
-            
+        entry = entry_target if (curr_price - entry_target) > atr else curr_price
         tp = entry + (atr * 3)
         sl = entry - (atr * 1.5)
     else:
-        # 做空建議
         entry_target = min(fib_0382, last['EMA20'])
-        if (entry_target - curr_price) > atr:
-            entry = entry_target
-            note = "建議反彈做空"
-        else:
-            entry = curr_price
-            note = "動能弱，市價做空"
-            
+        entry = entry_target if (entry_target - curr_price) > atr else curr_price
         tp = entry - (atr * 3)
         sl = entry + (atr * 1.5)
 
@@ -276,8 +275,9 @@ def get_institutional_strategy(symbol, current_interval_ui):
         "sl": sl,
         "df": df,
         "last_price": curr_price,
-        "note": note,
-        "vwap": last['VWAP']
+        "action_msg": action_msg,
+        "vwap_msg": vwap_msg,
+        "vwap_type": vwap_type
     }
 
 # --- Callbacks ---
@@ -453,7 +453,7 @@ if ai_res:
     st.divider()
 
     # --- Dashboard ---
-    st.subheader("🧠 AI 戰略指揮中心 (機構版)")
+    st.subheader("🧠 AI 戰略指揮中心")
     col_macro, col_signal, col_action = st.columns([1, 1.5, 1.5])
     with col_macro:
         st.markdown("#### 🔭 宏觀趨勢")
@@ -463,14 +463,13 @@ if ai_res:
         st.write(f"**日線 (D):** {get_trend_icon(ai_res['macro_trends'].get('D'))}")
         
     with col_signal:
-        st.markdown("#### 📡 訊號與濾網")
+        st.markdown("#### 📡 技術形態訊號")
         if not ai_res['signals']: st.info("暫無明顯形態")
         else:
             for sig in ai_res['signals']: st.markdown(f"- {sig}")
                 
     with col_action:
         st.markdown(f"#### 🚀 戰術建議: {ai_res['direction']}")
-        st.caption(f"策略備註: {ai_res['note']}")
         ac1, ac2, ac3 = st.columns(3)
         ac1.metric("建議入場", fmt_price(ai_res['entry']))
         ac2.metric("目標止盈", fmt_price(ai_res['tp']), delta="TP")
@@ -481,11 +480,7 @@ if ai_res:
     # --- Chart ---
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
-    
-    # [新增] VWAP (橘色) & EMA7 (白色)
-    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['VWAP'], line=dict(color='orange', width=2), name='VWAP (機構線)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1.5), name='EMA7 (短線)'), row=1, col=1)
-    
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['BB_Upper'], line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'), name='BB上軌'), row=1, col=1)
@@ -559,11 +554,12 @@ if ai_res:
                     st.rerun()
         
         with col_info:
-            st.info("☝️ 已自動填入 AI 建議點位")
-            if "VWAP" in str(ai_res['signals']):
-                st.success("注意：價格位於機構成本 (VWAP) 之上，支撐強勁")
-            elif "跌破 VWAP" in str(ai_res['signals']):
-                st.warning("注意：價格跌破機構成本 (VWAP)，小心回調")
+            # [新版] 白話文口語化解說
+            st.info(ai_res['action_msg'])
+            if ai_res['vwap_type'] == 'success':
+                st.success(ai_res['vwap_msg'])
+            else:
+                st.warning(ai_res['vwap_msg'])
 
     with tab_orders:
         st.subheader("🔥 持倉中")
