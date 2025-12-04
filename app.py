@@ -11,9 +11,9 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v56.0 全時區戰略版)")
+st.markdown("### 🏦 全方位戰情室 AI (v55.1 最終修復版)")
 
-# --- Persistence System ---
+# --- Persistence System (語法修正) ---
 DATA_FILE = "trade_data.json"
 
 def save_data():
@@ -23,8 +23,11 @@ def save_data():
         "pending_orders": st.session_state.pending_orders,
         "history": st.session_state.history
     }
-    try: with open(DATA_FILE, "w") as f: json.dump(data, f)
-    except: pass
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        st.error(f"存檔失敗: {e}")
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -35,7 +38,8 @@ def load_data():
                 st.session_state.positions = data.get("positions", [])
                 st.session_state.pending_orders = data.get("pending_orders", [])
                 st.session_state.history = data.get("history", [])
-        except: pass
+        except Exception as e:
+            pass # 忽略讀取錯誤，使用預設值
     else:
         if 'balance' not in st.session_state: st.session_state.balance = 10000.0
         if 'positions' not in st.session_state: st.session_state.positions = []
@@ -43,9 +47,10 @@ def load_data():
         if 'history' not in st.session_state: st.session_state.history = []
 
 if 'data_loaded' not in st.session_state:
-    load_data(); st.session_state.data_loaded = True
+    load_data()
+    st.session_state.data_loaded = True
 
-# Global State
+# Global State Init
 if 'trade_amt_box' not in st.session_state: st.session_state.trade_amt_box = 1000.0
 if 'ai_entry' not in st.session_state: st.session_state.ai_entry = 0.0
 if 'ai_tp' not in st.session_state: st.session_state.ai_tp = 0.0
@@ -169,89 +174,37 @@ def get_params(ui_selection):
     else: return "2y", "1d"
 period, interval = get_params(interval_ui)
 
-# --- MTF Data Fetching (Crucial for v56.0) ---
 @st.cache_data(ttl=60)
-def get_mtf_data(symbol):
-    # Fetch ample history to resample
+def get_data(symbol, period, interval):
     try:
         ticker = yf.Ticker(symbol)
-        # Fetch 2 years of daily data for M, W, D analysis
-        df_daily = ticker.history(period="2y", interval="1d")
-        # Fetch 1 month of hourly data for H4, H1 analysis
-        df_hourly = ticker.history(period="1mo", interval="1h")
-        
-        if df_daily.empty: return None, None, None, None
-        
-        # Resample Daily to Weekly and Monthly
-        # Logic: last close, max high, min low, first open
-        agg_dict = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
-        
-        df_weekly = df_daily.resample('W-MON').agg(agg_dict).dropna()
-        df_monthly = df_daily.resample('ME').agg(agg_dict).dropna() # ME = Month End (pandas 2.x)
-        
-        return df_monthly, df_weekly, df_daily, df_hourly
-    except: return None, None, None, None
+        df = ticker.history(period=period, interval=interval)
+        if df is None or df.empty: return None
+        if interval == "1h" and "6mo" in period:
+            logic = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
+            df = df.resample('4h').apply(logic).dropna()
+        df['Delta'] = df['Close'].diff()
+        delta = df['Delta']
+        gain = (delta.where(delta > 0, 0)).fillna(0); loss = (-delta.where(delta < 0, 0)).fillna(0)
+        rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
+        df['RSI'] = 100 - (100 / (1 + rs))
+        df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+        df['EMA60'] = df['Close'].ewm(span=60, adjust=False).mean()
+        df['EMA120'] = df['Close'].ewm(span=120, adjust=False).mean()
+        df['MA20'] = df['Close'].rolling(20).mean(); df['STD20'] = df['Close'].rolling(20).std()
+        df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2); df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
+        exp12 = df['Close'].ewm(span=12).mean(); exp26 = df['Close'].ewm(span=26).mean()
+        df['MACD'] = exp12 - exp26; df['Signal'] = df['MACD'].ewm(span=9).mean(); df['Hist'] = df['MACD'] - df['Signal']
+        prev_macd = df['MACD'].shift(1); prev_sig = df['Signal'].shift(1)
+        df['MACD_Cross'] = 0
+        df.loc[(prev_macd < prev_sig) & (df['MACD'] > df['Signal']), 'MACD_Cross'] = 1
+        df.loc[(prev_macd > prev_sig) & (df['MACD'] < df['Signal']), 'MACD_Cross'] = -1
+        df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
+        df['ATR'] = df['TR'].rolling(14).mean()
+        return df.dropna(how='all')
+    except: return None
 
-def add_indicators(df):
-    if df is None or df.empty: return df
-    df = df.copy()
-    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
-    df['EMA60'] = df['Close'].ewm(span=60, adjust=False).mean()
-    df['RSI'] = 100 - (100 / (1 + (df['Close'].diff().where(lambda x: x>0, 0).rolling(14).mean() / df['Close'].diff().where(lambda x: x<0, 0).abs().rolling(14).mean().replace(0, np.nan))))
-    return df
-
-# --- Cross-Timeframe Analysis Logic ---
-def analyze_trend(df):
-    if df is None or len(df) < 20: return 0 # Not enough data
-    last = df.iloc[-1]
-    if last['Close'] > last['EMA20']: return 1 # Bull
-    if last['Close'] < last['EMA20']: return -1 # Bear
-    return 0
-
-def run_mtf_analysis(df_m, df_w, df_d, df_h):
-    # Calculate indicators for all timeframes
-    df_m = add_indicators(df_m); df_w = add_indicators(df_w)
-    df_d = add_indicators(df_d); df_h = add_indicators(df_h)
-    
-    # Trend Bias
-    t_m = analyze_trend(df_m)
-    t_w = analyze_trend(df_w)
-    t_d = analyze_trend(df_d)
-    t_h = analyze_trend(df_h)
-    
-    # Robust Score (Weighted)
-    # Weights: Month 40%, Week 30%, Day 20%, Hour 10%
-    score = (t_m * 4) + (t_w * 3) + (t_d * 2) + (t_h * 1)
-    
-    # Interpretation
-    direction = "觀望"
-    if score >= 5: direction = "強力做多 (Strong Buy)"
-    elif score >= 2: direction = "偏多 (Buy)"
-    elif score <= -5: direction = "強力做空 (Strong Sell)"
-    elif score <= -2: direction = "偏空 (Sell)"
-    
-    # Entry Logic (based on lowest timeframe H1/H4)
-    last_h = df_h.iloc[-1]
-    atr = last_h['Close'] * 0.01 # Simplified ATR
-    
-    entry = last_h['Close']
-    tp = 0.0; sl = 0.0
-    
-    if score > 0: # Bullish
-        sl = entry - 2*atr
-        tp = entry + 3*atr
-    elif score < 0: # Bearish
-        sl = entry + 2*atr
-        tp = entry - 3*atr
-        
-    return {
-        "score": score,
-        "dir": direction,
-        "trends": [t_m, t_w, t_d, t_h], # for dashboard
-        "entry": entry, "tp": tp, "sl": sl
-    }
-
-# --- Indicators for Chart ---
+# --- AI & Indicators Logic ---
 def calculate_zigzag(df, depth=12):
     try:
         df = df.copy(); df['max_roll'] = df['High'].rolling(depth, center=True).max(); df['min_roll'] = df['Low'].rolling(depth, center=True).min()
@@ -279,6 +232,57 @@ def calculate_fvg(df):
         return bull, bear
     except: return [], []
 
+# --- AI Analysis ---
+def run_ai_analysis(df, pivots, fvg_bull, fvg_bear):
+    last = df.iloc[-1]
+    close = last['Close']
+    atr = last.get('ATR', close * 0.02)
+    score = 0
+    reasons = []
+    
+    # 1. Trend Analysis
+    ema20, ema60, ema120 = last.get('EMA20'), last.get('EMA60'), last.get('EMA120')
+    if close > ema20 > ema60 > ema120: score += 3; reasons.append("均線多頭")
+    elif close < ema20 < ema60 < ema120: score -= 3; reasons.append("均線空頭")
+    
+    # 2. Structure Analysis
+    if len(pivots) >= 2:
+        last_p = pivots[-1]
+        if last_p['type'] == 'high':
+            if 'label' in last_p and 'H' in last_p['label']: score += 2; reasons.append("結構創高")
+            else: score -= 1
+        else:
+            if 'label' in last_p and 'L' in last_p['label']: score -= 2; reasons.append("結構破底")
+            else: score += 1
+
+    # 3. Momentum
+    if last['RSI'] < 30: score += 2; reasons.append("RSI 超賣")
+    elif last['RSI'] > 70: score -= 2; reasons.append("RSI 超買")
+    
+    # 4. Support/Resistance
+    if fvg_bull:
+        latest_bull = fvg_bull[-1]
+        if close > latest_bull['top'] and (close - latest_bull['top'])/close < 0.01: score += 2; reasons.append("FVG 支撐")
+    if fvg_bear:
+        latest_bear = fvg_bear[-1]
+        if close < latest_bear['bottom'] and (latest_bear['bottom'] - close)/close < 0.01: score -= 2; reasons.append("FVG 壓力")
+
+    # Final
+    direction = "做多 (Long)" if score > 0 else "做空 (Short)"
+    confidence = min(abs(score), 10)
+    
+    # Calc
+    if score > 0:
+        entry_price = ema20 if ema20 < close else (close - atr)
+        sl_price = entry_price - (1.5 * atr)
+        tp_price = entry_price + (2.5 * atr) 
+    else:
+        entry_price = ema20 if ema20 > close else (close + atr)
+        sl_price = entry_price + (1.5 * atr)
+        tp_price = entry_price - (2.5 * atr)
+        
+    return {"score": score, "dir": direction, "conf": confidence, "entry": entry_price, "tp": tp_price, "sl": sl_price, "reasons": ", ".join(reasons)}
+
 def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=None):
     if pos_index >= len(st.session_state.positions): return
     pos = st.session_state.positions[pos_index]
@@ -299,19 +303,12 @@ def cancel_pending_order(idx):
         ord = st.session_state.pending_orders.pop(idx); st.session_state.balance += ord['margin']; st.toast(f"🗑️ 已撤銷"); save_data(); st.rerun()
 
 # --- Main Page ---
-# 1. Fetch MTF Data
-df_m, df_w, df_d, df_h = get_mtf_data(symbol)
+df = get_data(symbol, period, interval)
 
-# Select Chart Data based on user interval
-df_chart = None
-if "日" in interval_ui: df_chart = df_d
-elif "4小時" in interval_ui or "1小時" in interval_ui: df_chart = df_h
-else: df_chart = df_d # Default
+if df is not None and not df.empty:
+    last = df.iloc[-1]; curr_price = float(last['Close'])
 
-if df_chart is not None and not df_chart.empty:
-    last = df_chart.iloc[-1]; curr_price = float(last['Close'])
-
-    # Pending Orders
+    # Pending Orders Check
     pending_updated = False
     if st.session_state.pending_orders:
         for i in reversed(range(len(st.session_state.pending_orders))):
@@ -324,60 +321,49 @@ if df_chart is not None and not df_chart.empty:
                 st.session_state.positions.append(new_pos); st.toast(f"🔔 成交！{new_pos['symbol']}"); pending_updated = True
     if pending_updated: save_data()
 
-    # --- Run MTF Analysis ---
-    mtf_res = run_mtf_analysis(df_m, df_w, df_d, df_h)
+    # --- AI Analysis ---
+    pivots = calculate_zigzag(df); bull_fvg, bear_fvg = calculate_fvg(df)
+    ai_res = run_ai_analysis(df, pivots, bull_fvg, bear_fvg)
     
-    st.session_state.ai_entry = mtf_res['entry']
-    st.session_state.ai_tp = mtf_res['tp']
-    st.session_state.ai_sl = mtf_res['sl']
+    # Store AI values
+    st.session_state.ai_entry = ai_res['entry']
+    st.session_state.ai_tp = ai_res['tp']
+    st.session_state.ai_sl = ai_res['sl']
 
-    # --- MTF Dashboard ---
-    st.markdown("### 🧠 全時區戰略雷達")
-    c_rad1, c_rad2, c_rad3 = st.columns([1.5, 1, 1.5])
+    # --- AI Dashboard ---
+    st.markdown("### 🧠 AI 戰略指揮中心")
+    c_ai1, c_ai2, c_ai3 = st.columns([1.5, 1, 1.5])
     
-    with c_rad1:
-        color = "green" if mtf_res['score'] > 0 else "red" if mtf_res['score'] < 0 else "gray"
-        st.markdown(f"#### 穩健建議: :{color}[{mtf_res['dir']}]")
-        st.caption(f"穩健評分: {mtf_res['score']} / 10")
-        
-        # Trend Dots
-        t_labels = ["月", "週", "日", "時"]
-        dots = ""
-        for t in mtf_res['trends']:
-            if t == 1: dots += "🟢 "
-            elif t == -1: dots += "🔴 "
-            else: dots += "⚪ "
-        st.write(f"趨勢: {dots} ({'|'.join(t_labels)})")
-
-    with c_rad2:
-        st.metric("建議入場", fmt_price(mtf_res['entry']))
-        if st.button("📋 帶入策略"): st.toast("已填入下單區")
-
-    with c_rad3:
+    with c_ai1:
+        color = "green" if ai_res['score'] > 0 else "red"
+        st.markdown(f"#### 建議: :{color}[{ai_res['dir']}]")
+        st.caption(f"評分: {ai_res['conf']}/10")
+        st.write(f"💡 理由: {ai_res['reasons']}")
+    
+    with c_ai2:
+        st.metric("建議入場", fmt_price(ai_res['entry']))
+        if st.button("📋 一鍵帶入"): st.toast("已填入下單區")
+    
+    with c_ai3:
         c_tp, c_sl = st.columns(2)
-        c_tp.metric("目標止盈", fmt_price(mtf_res['tp']))
-        c_sl.metric("防守止損", fmt_price(mtf_res['sl']))
+        c_tp.metric("目標止盈", fmt_price(ai_res['tp']))
+        c_sl.metric("防守止損", fmt_price(ai_res['sl']))
 
     st.divider()
 
-    # --- Chart Area ---
-    # Prepare Indicators for Chart (On selected timeframe)
-    df_chart = add_indicators(df_chart) # Ensure indicators exist
-    pivots = calculate_zigzag(df_chart); bull_fvg, bear_fvg = calculate_fvg(df_chart)
-    
+    # --- Chart ---
     indicator_mode = st.radio("副圖", ["RSI", "MACD"], horizontal=True, label_visibility="collapsed")
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.15, 0.25], subplot_titles=("價格", "成交量", indicator_mode))
-    
-    fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
-    
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
     if show_six:
-        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], name='EMA20', line=dict(width=1, color='yellow')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], name='EMA60', line=dict(width=1, color='cyan')), row=1, col=1)
-    
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA20'], name='EMA20', line=dict(width=1, color='yellow')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], name='EMA60', line=dict(width=1, color='cyan')), row=1, col=1)
+    if show_bb:
+        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)'), fill='tonexty', fillcolor='rgba(255,255,255,0.05)'), row=1, col=1)
     if show_fvg:
-        for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df_chart.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y', row=1, col=1)
-        for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df_chart.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.15)", line_width=0, xref='x', yref='y', row=1, col=1)
-    
+        for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y', row=1, col=1)
+        for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.15)", line_width=0, xref='x', yref='y', row=1, col=1)
     if show_zigzag and pivots:
         px = [p['idx'] for p in pivots]; py = [p['val'] for p in pivots]
         fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=2), marker_size=4), row=1, col=1)
@@ -386,37 +372,26 @@ if df_chart is not None and not df_chart.empty:
                 label_clr = '#00FF00' if 'H' in p['label'] and p['type'] == 'high' else 'red'
                 fig.add_annotation(x=p['idx'], y=p['val'], text=p['label'], showarrow=False, font=dict(color=label_clr, size=10), yshift=15 if p['type']=='high' else -15, row=1, col=1)
     
-    if show_orders:
-        if st.session_state.positions:
-            for pos in st.session_state.positions:
-                if pos['symbol'] == symbol:
-                    if pos.get('tp', 0) > 0: fig.add_hline(y=pos['tp'], line_dash="dashdot", line_color="#00FF00", annotation_text=f"止盈")
-                    if pos.get('sl', 0) > 0: fig.add_hline(y=pos['sl'], line_dash="dashdot", line_color="#FF0000", annotation_text=f"止損")
-        if st.session_state.pending_orders:
-            for ord in st.session_state.pending_orders:
-                if ord['symbol'] == symbol: fig.add_hline(y=ord['entry'], line_dash="dash", line_color="orange", annotation_text=f"掛單")
+    if st.session_state.ai_entry > 0:
+        fig.add_hline(y=st.session_state.ai_entry, line_dash="dot", line_color="white", annotation_text="AI 進場", row=1, col=1)
+        fig.add_hline(y=st.session_state.ai_tp, line_dash="dot", line_color="#00FF00", annotation_text="AI 止盈", row=1, col=1)
+        fig.add_hline(y=st.session_state.ai_sl, line_dash="dot", line_color="red", annotation_text="AI 止損", row=1, col=1)
 
-    # Volume
-    colors = ['#00C853' if c >= o else '#FF3D00' for c, o in zip(df_chart['Close'], df_chart['Open'])]
-    fig.add_trace(go.Bar(x=df_chart.index, y=df_chart['Volume'], name='Vol', marker_color=colors), row=2, col=1)
-
-    # Sub
+    colors = ['#00C853' if c >= o else '#FF3D00' for c, o in zip(df['Close'], df['Open'])]
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Vol', marker_color=colors), row=2, col=1)
     if indicator_mode == "RSI":
-        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['RSI'], name='RSI', line=dict(width=2, color='violet')), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(width=2, color='violet')), row=3, col=1)
         fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1); fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
     else: 
-        # MACD (calculated in get_mtf for all, but need for chart)
-        # Re-calc for safety or use df_chart cols
-        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['MACD'], name='MACD', line=dict(width=1, color='cyan')), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['Signal'], name='Signal', line=dict(width=1, color='orange')), row=3, col=1)
-        hist_colors = ['#00C853' if h >= 0 else '#FF3D00' for h in df_chart['Hist']]
-        fig.add_trace(go.Bar(x=df_chart.index, y=df_chart['Hist'], name='Hist', marker_color=hist_colors), row=3, col=1)
-
+        fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', line=dict(width=1, color='cyan')), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], name='Signal', line=dict(width=1, color='orange')), row=3, col=1)
+        hist_colors = ['#00C853' if h >= 0 else '#FF3D00' for h in df['Hist']]
+        fig.add_trace(go.Bar(x=df.index, y=df['Hist'], name='Hist', marker_color=hist_colors), row=3, col=1)
     fig.update_layout(template="plotly_dark", height=700, margin=dict(l=10, r=10, t=10, b=10), showlegend=False, dragmode='pan')
     fig.update_xaxes(rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
 
-    # --- Panel ---
+    # --- Wallet & Panel ---
     st.divider()
     total_unrealized = 0; total_margin = 0
     if st.session_state.positions:
@@ -439,10 +414,9 @@ if df_chart is not None and not df_chart.empty:
     with tab_trade:
         order_type = st.radio("類型", ["⚡ 市價", "⏱️ 掛單"], horizontal=True, label_visibility="collapsed")
         c1, c2 = st.columns(2)
-        side = c1.selectbox("方向", ["🟢 做多", "🔴 做空"])
+        side = c1.selectbox("方向", ["🟢 做多", "🔴 做空"], index=0 if ai_res['dir']=="做多 (Long)" else 1)
         lev = c2.number_input("槓桿", 1, 125, 20)
         
-        # 價格預設: 如果 AI 有建議，自動填入 AI
         def_p = curr_price
         if "掛單" in order_type and st.session_state.ai_entry > 0: def_p = st.session_state.ai_entry
         entry_p = st.number_input("掛單價格", value=float(def_p), format="%.6f") if "掛單" in order_type else st.caption(f"市價約: {fmt_price(curr_price)}") or curr_price
