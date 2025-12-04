@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v81.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v81.0 全面百分比版)")
+st.set_page_config(page_title="全方位戰情室 AI (v82.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v82.0 倉位管理增強版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -21,7 +21,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 # --- Persistence ---
-DATA_FILE = "trade_data_v81.json"
+DATA_FILE = "trade_data_v82.json"
 
 def save_data():
     data = {
@@ -176,24 +176,27 @@ def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
     st.session_state.symbol_input = "" 
 
-# --- Dialogs ---
+# --- Dialogs (倉位管理 - 已升級) ---
 @st.dialog("⚡ 倉位管理")
 def manage_position_dialog(i, pos, current_price):
     st.markdown(f"**{pos.get('symbol','--')}**")
+    
+    # 讀取持倉基礎數據
     try:
         entry = float(pos.get('entry', 0))
         lev = float(pos.get('lev', 1))
         margin = float(pos.get('margin', 0))
-        d = 1 if pos.get('type') == 'Long' else -1
-        u_pnl = margin * (((current_price - entry) / entry) * lev * d)
+        pos_type = pos.get('type', 'Long')
+        d = 1 if pos_type == 'Long' else -1
         
-        # [計算 %]
+        # 計算當前盈虧
+        u_pnl = margin * (((current_price - entry) / entry) * lev * d)
         roe_pct = (u_pnl / margin) * 100 if margin > 0 else 0.0
         
         color = "green" if u_pnl >= 0 else "red"
-        # 顯示雙重資訊：金額 + 百分比
         st.markdown(f"未結盈虧: <span style='color:{color}; font-weight:bold'>${u_pnl:+.2f} ({roe_pct:+.2f}%)</span>", unsafe_allow_html=True)
-    except: pass
+    except: 
+        entry = 0; lev = 1; pos_type = 'Long'
 
     tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
     
@@ -204,15 +207,50 @@ def manage_position_dialog(i, pos, current_price):
             st.rerun()
 
     with tab_tpsl:
-        # 這裡也可以考慮加上 ROE 輸入模式，但為了介面簡潔，暫時維持價格輸入
-        c1, c2 = st.columns(2)
-        new_tp = c1.number_input("TP", value=float(pos.get('tp', 0)), key=f"ntp_{i}", format="%.6f")
-        new_sl = c2.number_input("SL", value=float(pos.get('sl', 0)), key=f"nsl_{i}", format="%.6f")
+        # [重點] 新增單位切換
+        mode = st.radio("設定模式", ["價格", "ROE %"], horizontal=True, key=f"m_mode_{i}")
+        
+        current_tp = float(pos.get('tp', 0))
+        current_sl = float(pos.get('sl', 0))
+        
+        new_tp = current_tp
+        new_sl = current_sl
+
+        if mode == "價格":
+            c1, c2 = st.columns(2)
+            new_tp = c1.number_input("TP 價格", value=current_tp, key=f"ntp_p_{i}", format="%.6f")
+            new_sl = c2.number_input("SL 價格", value=current_sl, key=f"nsl_p_{i}", format="%.6f")
+        else:
+            # ROE 模式輸入
+            c1, c2 = st.columns(2)
+            roe_tp = c1.number_input("止盈 % (例: 50)", value=0.0, key=f"ntp_r_{i}")
+            roe_sl = c2.number_input("止損 % (例: 20)", value=0.0, key=f"nsl_r_{i}")
+            
+            # 即時試算價格
+            calc_tp = 0.0
+            calc_sl = 0.0
+            direction = 1 if pos_type == 'Long' else -1
+            
+            if roe_tp > 0:
+                # 公式: Entry * (1 + (ROE%/100)/Lev * Dir)
+                calc_tp = entry * (1 + (roe_tp / 100.0) / lev * direction)
+                c1.caption(f"預估: {fmt_price(calc_tp)}")
+                new_tp = calc_tp # 準備更新
+            
+            if roe_sl > 0:
+                # 止損代表虧損，所以 PnL 是負的，公式要用減號 (對於 Long)
+                # Long SL: Entry * (1 - (ROE%/100)/Lev)
+                # Short SL: Entry * (1 + (ROE%/100)/Lev)
+                calc_sl = entry * (1 - (roe_sl / 100.0) / lev * direction)
+                c2.caption(f"預估: {fmt_price(calc_sl)}")
+                new_sl = calc_sl # 準備更新
+
         if st.button("更新設定", key=f"btn_u_{i}", use_container_width=True):
+            # 無論是用價格還是ROE算出來的價格，最終都存入價格
             st.session_state.positions[i]['tp'] = new_tp
             st.session_state.positions[i]['sl'] = new_sl
             save_data()
-            st.toast("✅ 更新成功")
+            st.toast("✅ 止盈止損已更新")
             st.rerun()
 
 def close_position(pos_index, percentage, reason, exit_price):
@@ -437,16 +475,12 @@ if ai_res and df_chart is not None:
                 if p_cur:
                     d = 1 if pos['type']=='Long' else -1
                     pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
-                    
-                    # [重點] 計算 ROE %
                     roe_pct = (pnl / pos['margin']) * 100
-                    
                     clr = "#00C853" if pnl >= 0 else "#FF3D00"
                     
                     c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
                     c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
                     
-                    # [重點] 顯示金額 + ROE%
                     c_info.markdown(f"""
                     <div style='font-size:14px'>
                         <b>{pos['type']} x{pos['lev']}</b> <span style='color:#aaa'>| 本金 ${pos['margin']:.0f}</span><br>
