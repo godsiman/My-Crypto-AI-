@@ -11,9 +11,28 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v55.1 最終修復版)")
+st.markdown("### 🏦 全方位戰情室 AI (v55.2 緊急修復版)")
 
-# --- Persistence System (語法修正) ---
+# --- State Initialization (最優先執行，防止錢包報錯) ---
+# 確保所有關鍵變數在任何邏輯執行前都已經存在
+default_state = {
+    'balance': 10000.0,
+    'positions': [],
+    'pending_orders': [],
+    'history': [],
+    'trade_amt_box': 1000.0,
+    'ai_entry': 0.0,
+    'ai_tp': 0.0,
+    'ai_sl': 0.0,
+    'chart_symbol': 'BTC-USD',
+    'market': '加密貨幣'
+}
+
+for key, val in default_state.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
+# --- Persistence System ---
 DATA_FILE = "trade_data.json"
 
 def save_data():
@@ -24,6 +43,7 @@ def save_data():
         "history": st.session_state.history
     }
     try:
+        # [修復] 正確的縮排語法
         with open(DATA_FILE, "w") as f:
             json.dump(data, f)
     except Exception as e:
@@ -39,29 +59,20 @@ def load_data():
                 st.session_state.pending_orders = data.get("pending_orders", [])
                 st.session_state.history = data.get("history", [])
         except Exception as e:
-            pass # 忽略讀取錯誤，使用預設值
-    else:
-        if 'balance' not in st.session_state: st.session_state.balance = 10000.0
-        if 'positions' not in st.session_state: st.session_state.positions = []
-        if 'pending_orders' not in st.session_state: st.session_state.pending_orders = []
-        if 'history' not in st.session_state: st.session_state.history = []
+            st.error(f"讀檔失敗 (已重置): {e}")
 
-if 'data_loaded' not in st.session_state:
+# 每次重新執行時嘗試讀取一次 (僅第一次)
+if 'data_loaded_flag' not in st.session_state:
     load_data()
-    st.session_state.data_loaded = True
-
-# Global State Init
-if 'trade_amt_box' not in st.session_state: st.session_state.trade_amt_box = 1000.0
-if 'ai_entry' not in st.session_state: st.session_state.ai_entry = 0.0
-if 'ai_tp' not in st.session_state: st.session_state.ai_tp = 0.0
-if 'ai_sl' not in st.session_state: st.session_state.ai_sl = 0.0
-
-if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
-if 'market' not in st.session_state: st.session_state.market = "加密貨幣"
+    st.session_state.data_loaded_flag = True
 
 # --- Callbacks ---
 def set_amt(ratio):
-    st.session_state.trade_amt_box = float(st.session_state.balance * ratio)
+    # 強制更新輸入框綁定的變數
+    val = float(st.session_state.balance * ratio)
+    # 確保不小於 0
+    if val < 0: val = 0.0
+    st.session_state.trade_amt_box = val
 
 # --- Helpers ---
 def fmt_price(val):
@@ -75,10 +86,13 @@ def fmt_price(val):
 def get_current_price(sym):
     try:
         ticker = yf.Ticker(sym)
-        if hasattr(ticker, 'fast_info') and getattr(ticker.fast_info, 'last_price', None): return float(ticker.fast_info.last_price)
+        if hasattr(ticker, 'fast_info') and getattr(ticker.fast_info, 'last_price', None):
+            return float(ticker.fast_info.last_price)
         hist = ticker.history(period="1d", interval="1m")
-        if not hist.empty: return float(hist['Close'].iloc[-1])
-    except: return None
+        if not hist.empty:
+            return float(hist['Close'].iloc[-1])
+    except:
+        return None
     return None
 
 def calc_price_from_roe(entry, leverage, direction_str, roe_pct):
@@ -93,21 +107,28 @@ def calc_roe_from_price(entry, leverage, direction_str, target_price):
     try: return float(((target_price - entry) / entry) * leverage * direction * 100)
     except: return 0.0
 
-# --- Dialog ---
+# --- Dialog Functions ---
 @st.dialog("⚡ 倉位管理", width="small")
 def manage_position_dialog(i, pos, current_price):
     st.markdown(f"**{pos['symbol']}** ({pos['type']} x{pos['lev']})")
     st.caption(f"本金: {pos['margin']} U | 開倉: {fmt_price(pos['entry'])}")
     
     tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
+    
     with tab_close:
+        st.write("選擇平倉比例:")
         ratio = st.radio("Ratio", [25,50,75,100], 3, horizontal=True, key=f"d_r_{i}", format_func=lambda x:f"{x}%")
         if st.button("確認平倉", key=f"d_btn_close_{i}", type="primary", use_container_width=True):
-            close_position(i, ratio, "手動", current_price); st.rerun()
+            close_position(i, ratio, "手動", current_price)
+            st.rerun()
+
     with tab_tpsl:
-        current_tp = float(pos.get('tp', 0)); current_sl = float(pos.get('sl', 0))
+        current_tp = float(pos.get('tp', 0))
+        current_sl = float(pos.get('sl', 0))
         input_mode = st.radio("輸入單位", ["價格", "ROE %"], horizontal=True, key=f"d_mode_{i}")
+        
         c_t, c_s = st.columns(2)
+        
         if input_mode == "價格":
             t_val = c_t.number_input("TP", value=current_tp, key=f"d_t_p_{i}")
             s_val = c_s.number_input("SL", value=current_sl, key=f"d_s_p_{i}")
@@ -117,12 +138,15 @@ def manage_position_dialog(i, pos, current_price):
             s_roe = st.slider("止損 %", -100.0, 0.0, float(f"{min(0.0, get_roe(current_sl, -20.0)):.2f}"), 5.0, key=f"d_s_s_{i}")
             t_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], t_roe)
             s_val = calc_price_from_roe(pos['entry'], pos['lev'], pos['type'], s_roe)
-            if t_val>0: st.success(f"TP: {fmt_price(t_val)}")
-            if s_val>0: st.error(f"SL: {fmt_price(s_val)}")
+            if t_val > 0: st.success(f"TP: {fmt_price(t_val)}")
+            if s_val > 0: st.error(f"SL: {fmt_price(s_val)}")
+
         if st.button("更新", key=f"d_u_{i}", use_container_width=True):
             st.session_state.positions[i]['tp'] = t_val
             st.session_state.positions[i]['sl'] = s_val
-            st.toast("已更新"); save_data(); st.rerun()
+            st.toast("已更新")
+            save_data()
+            st.rerun()
 
 # --- Sidebar ---
 st.sidebar.header("🎯 設定")
@@ -149,7 +173,9 @@ elif market == "台股":
     elif not final_symbol.endswith(".TW") and not final_symbol.endswith(".TWO"): final_symbol += ".TW"
 
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = final_symbol
-if st.sidebar.button("🚀 載入 K 線"): st.session_state.chart_symbol = final_symbol; st.rerun()
+if st.sidebar.button("🚀 載入 K 線"):
+    st.session_state.chart_symbol = final_symbol
+    st.rerun()
 
 symbol = st.session_state.chart_symbol 
 interval_ui = st.sidebar.radio("週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
@@ -163,9 +189,18 @@ show_orders = st.sidebar.checkbox("圖表掛單", True)
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("💰 錢包管理"):
-    st.caption(f"餘額: ${st.session_state.balance:,.2f}")
-    if st.button("🔄 重置為 1W U"): st.session_state.balance = 10000.0; st.session_state.positions = []; st.session_state.pending_orders = []; save_data(); st.rerun()
-    if st.button("➕ 補血 +1W U"): st.session_state.balance += 10000.0; save_data(); st.rerun()
+    st.caption(f"可用餘額: ${st.session_state.balance:,.2f}")
+    if st.button("🔄 重置為 1W U"):
+        st.session_state.balance = 10000.0
+        st.session_state.positions = []
+        st.session_state.pending_orders = []
+        st.session_state.history = []
+        save_data()
+        st.rerun()
+    if st.button("➕ 補血 +1W U"):
+        st.session_state.balance += 10000.0
+        save_data()
+        st.rerun()
 
 def get_params(ui_selection):
     if "15分鐘" in ui_selection: return "5d", "15m"
@@ -174,37 +209,66 @@ def get_params(ui_selection):
     else: return "2y", "1d"
 period, interval = get_params(interval_ui)
 
+# --- MTF Data ---
 @st.cache_data(ttl=60)
-def get_data(symbol, period, interval):
+def get_mtf_data(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period, interval=interval)
-        if df is None or df.empty: return None
-        if interval == "1h" and "6mo" in period:
-            logic = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
-            df = df.resample('4h').apply(logic).dropna()
-        df['Delta'] = df['Close'].diff()
-        delta = df['Delta']
-        gain = (delta.where(delta > 0, 0)).fillna(0); loss = (-delta.where(delta < 0, 0)).fillna(0)
-        rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
-        df['RSI'] = 100 - (100 / (1 + rs))
-        df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
-        df['EMA60'] = df['Close'].ewm(span=60, adjust=False).mean()
-        df['EMA120'] = df['Close'].ewm(span=120, adjust=False).mean()
-        df['MA20'] = df['Close'].rolling(20).mean(); df['STD20'] = df['Close'].rolling(20).std()
-        df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2); df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
-        exp12 = df['Close'].ewm(span=12).mean(); exp26 = df['Close'].ewm(span=26).mean()
-        df['MACD'] = exp12 - exp26; df['Signal'] = df['MACD'].ewm(span=9).mean(); df['Hist'] = df['MACD'] - df['Signal']
-        prev_macd = df['MACD'].shift(1); prev_sig = df['Signal'].shift(1)
-        df['MACD_Cross'] = 0
-        df.loc[(prev_macd < prev_sig) & (df['MACD'] > df['Signal']), 'MACD_Cross'] = 1
-        df.loc[(prev_macd > prev_sig) & (df['MACD'] < df['Signal']), 'MACD_Cross'] = -1
-        df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
-        df['ATR'] = df['TR'].rolling(14).mean()
-        return df.dropna(how='all')
-    except: return None
+        df_daily = ticker.history(period="2y", interval="1d")
+        df_hourly = ticker.history(period="1mo", interval="1h")
+        
+        if df_daily.empty: return None, None, None, None
+        
+        agg_dict = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
+        df_weekly = df_daily.resample('W-MON').agg(agg_dict).dropna()
+        df_monthly = df_daily.resample('ME').agg(agg_dict).dropna()
+        
+        return df_monthly, df_weekly, df_daily, df_hourly
+    except: return None, None, None, None
 
-# --- AI & Indicators Logic ---
+def add_indicators(df):
+    if df is None or df.empty: return df
+    df = df.copy()
+    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA60'] = df['Close'].ewm(span=60, adjust=False).mean()
+    df['RSI'] = 100 - (100 / (1 + (df['Close'].diff().where(lambda x: x>0, 0).rolling(14).mean() / df['Close'].diff().where(lambda x: x<0, 0).abs().rolling(14).mean().replace(0, np.nan))))
+    return df
+
+def analyze_trend(df):
+    if df is None or len(df) < 20: return 0
+    last = df.iloc[-1]
+    if last['Close'] > last['EMA20']: return 1
+    if last['Close'] < last['EMA20']: return -1
+    return 0
+
+def run_mtf_analysis(df_m, df_w, df_d, df_h):
+    df_m = add_indicators(df_m); df_w = add_indicators(df_w)
+    df_d = add_indicators(df_d); df_h = add_indicators(df_h)
+    
+    t_m = analyze_trend(df_m); t_w = analyze_trend(df_w)
+    t_d = analyze_trend(df_d); t_h = analyze_trend(df_h)
+    
+    score = (t_m * 4) + (t_w * 3) + (t_d * 2) + (t_h * 1)
+    
+    direction = "觀望"
+    if score >= 5: direction = "強力做多 (Strong Buy)"
+    elif score >= 2: direction = "偏多 (Buy)"
+    elif score <= -5: direction = "強力做空 (Strong Sell)"
+    elif score <= -2: direction = "偏空 (Sell)"
+    
+    last_h = df_h.iloc[-1]
+    atr = last_h['Close'] * 0.01
+    entry = last_h['Close']
+    tp = 0.0; sl = 0.0
+    
+    if score > 0:
+        sl = entry - 2*atr; tp = entry + 3*atr
+    elif score < 0:
+        sl = entry + 2*atr; tp = entry - 3*atr
+        
+    return {"score": score, "dir": direction, "trends": [t_m, t_w, t_d, t_h], "entry": entry, "tp": tp, "sl": sl}
+
+# --- Indicators ---
 def calculate_zigzag(df, depth=12):
     try:
         df = df.copy(); df['max_roll'] = df['High'].rolling(depth, center=True).max(); df['min_roll'] = df['Low'].rolling(depth, center=True).min()
@@ -232,68 +296,20 @@ def calculate_fvg(df):
         return bull, bear
     except: return [], []
 
-# --- AI Analysis ---
-def run_ai_analysis(df, pivots, fvg_bull, fvg_bear):
-    last = df.iloc[-1]
-    close = last['Close']
-    atr = last.get('ATR', close * 0.02)
-    score = 0
-    reasons = []
-    
-    # 1. Trend Analysis
-    ema20, ema60, ema120 = last.get('EMA20'), last.get('EMA60'), last.get('EMA120')
-    if close > ema20 > ema60 > ema120: score += 3; reasons.append("均線多頭")
-    elif close < ema20 < ema60 < ema120: score -= 3; reasons.append("均線空頭")
-    
-    # 2. Structure Analysis
-    if len(pivots) >= 2:
-        last_p = pivots[-1]
-        if last_p['type'] == 'high':
-            if 'label' in last_p and 'H' in last_p['label']: score += 2; reasons.append("結構創高")
-            else: score -= 1
-        else:
-            if 'label' in last_p and 'L' in last_p['label']: score -= 2; reasons.append("結構破底")
-            else: score += 1
-
-    # 3. Momentum
-    if last['RSI'] < 30: score += 2; reasons.append("RSI 超賣")
-    elif last['RSI'] > 70: score -= 2; reasons.append("RSI 超買")
-    
-    # 4. Support/Resistance
-    if fvg_bull:
-        latest_bull = fvg_bull[-1]
-        if close > latest_bull['top'] and (close - latest_bull['top'])/close < 0.01: score += 2; reasons.append("FVG 支撐")
-    if fvg_bear:
-        latest_bear = fvg_bear[-1]
-        if close < latest_bear['bottom'] and (latest_bear['bottom'] - close)/close < 0.01: score -= 2; reasons.append("FVG 壓力")
-
-    # Final
-    direction = "做多 (Long)" if score > 0 else "做空 (Short)"
-    confidence = min(abs(score), 10)
-    
-    # Calc
-    if score > 0:
-        entry_price = ema20 if ema20 < close else (close - atr)
-        sl_price = entry_price - (1.5 * atr)
-        tp_price = entry_price + (2.5 * atr) 
-    else:
-        entry_price = ema20 if ema20 > close else (close + atr)
-        sl_price = entry_price + (1.5 * atr)
-        tp_price = entry_price - (2.5 * atr)
-        
-    return {"score": score, "dir": direction, "conf": confidence, "entry": entry_price, "tp": tp_price, "sl": sl_price, "reasons": ", ".join(reasons)}
-
 def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=None):
     if pos_index >= len(st.session_state.positions): return
     pos = st.session_state.positions[pos_index]
     if exit_price is None: exit_price = get_current_price(pos['symbol']) or pos['entry']
+    
     close_margin = pos['margin'] * (percentage / 100)
     direction = 1 if pos['type'] == 'Long' else -1
     try: pnl_pct = ((exit_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
     except: pnl_pct = 0
     pnl_usdt = close_margin * (pnl_pct / 100)
+    
     st.session_state.balance += (close_margin + pnl_usdt)
     st.session_state.history.append({"時間": datetime.now().strftime("%m-%d %H:%M"), "幣種": pos['symbol'], "動作": f"平倉 {percentage}%", "入場": pos['entry'], "出場": exit_price, "損益(U)": round(pnl_usdt, 2), "獲利%": round(pnl_pct, 2), "原因": reason})
+    
     if percentage == 100: st.session_state.positions.pop(pos_index); st.toast(f"✅ 全平 {pos['symbol']}")
     else: st.session_state.positions[pos_index]['margin'] -= close_margin; st.toast(f"✅ 部分平倉 {pos['symbol']}")
     save_data()
@@ -303,12 +319,16 @@ def cancel_pending_order(idx):
         ord = st.session_state.pending_orders.pop(idx); st.session_state.balance += ord['margin']; st.toast(f"🗑️ 已撤銷"); save_data(); st.rerun()
 
 # --- Main Page ---
-df = get_data(symbol, period, interval)
+df_m, df_w, df_d, df_h = get_mtf_data(symbol)
+df_chart = df_d
+if "日" in interval_ui: df_chart = df_d
+elif "4小時" in interval_ui or "1小時" in interval_ui: df_chart = df_h
+else: df_chart = df_d
 
-if df is not None and not df.empty:
-    last = df.iloc[-1]; curr_price = float(last['Close'])
+if df_chart is not None and not df_chart.empty:
+    last = df_chart.iloc[-1]; curr_price = float(last['Close'])
 
-    # Pending Orders Check
+    # Pending Orders
     pending_updated = False
     if st.session_state.pending_orders:
         for i in reversed(range(len(st.session_state.pending_orders))):
@@ -321,49 +341,46 @@ if df is not None and not df.empty:
                 st.session_state.positions.append(new_pos); st.toast(f"🔔 成交！{new_pos['symbol']}"); pending_updated = True
     if pending_updated: save_data()
 
-    # --- AI Analysis ---
-    pivots = calculate_zigzag(df); bull_fvg, bear_fvg = calculate_fvg(df)
-    ai_res = run_ai_analysis(df, pivots, bull_fvg, bear_fvg)
-    
-    # Store AI values
-    st.session_state.ai_entry = ai_res['entry']
-    st.session_state.ai_tp = ai_res['tp']
-    st.session_state.ai_sl = ai_res['sl']
+    # MTF Analysis
+    mtf_res = run_mtf_analysis(df_m, df_w, df_d, df_h)
+    st.session_state.ai_entry = mtf_res['entry']
+    st.session_state.ai_tp = mtf_res['tp']
+    st.session_state.ai_sl = mtf_res['sl']
 
-    # --- AI Dashboard ---
-    st.markdown("### 🧠 AI 戰略指揮中心")
-    c_ai1, c_ai2, c_ai3 = st.columns([1.5, 1, 1.5])
-    
-    with c_ai1:
-        color = "green" if ai_res['score'] > 0 else "red"
-        st.markdown(f"#### 建議: :{color}[{ai_res['dir']}]")
-        st.caption(f"評分: {ai_res['conf']}/10")
-        st.write(f"💡 理由: {ai_res['reasons']}")
-    
-    with c_ai2:
-        st.metric("建議入場", fmt_price(ai_res['entry']))
-        if st.button("📋 一鍵帶入"): st.toast("已填入下單區")
-    
-    with c_ai3:
+    # --- Dashboard ---
+    st.markdown("### 🧠 全時區戰略雷達")
+    c_rad1, c_rad2, c_rad3 = st.columns([1.5, 1, 1.5])
+    with c_rad1:
+        color = "green" if mtf_res['score'] > 0 else "red" if mtf_res['score'] < 0 else "gray"
+        st.markdown(f"#### 穩健建議: :{color}[{mtf_res['dir']}]")
+        st.caption(f"評分: {mtf_res['score']} / 10")
+        dots = "".join(["🟢 " if t==1 else "🔴 " if t==-1 else "⚪ " for t in mtf_res['trends']])
+        st.write(f"趨勢: {dots} (月|週|日|時)")
+    with c_rad2:
+        st.metric("建議入場", fmt_price(mtf_res['entry']))
+        if st.button("📋 帶入策略"): st.toast("已填入下單區")
+    with c_rad3:
         c_tp, c_sl = st.columns(2)
-        c_tp.metric("目標止盈", fmt_price(ai_res['tp']))
-        c_sl.metric("防守止損", fmt_price(ai_res['sl']))
+        c_tp.metric("目標止盈", fmt_price(mtf_res['tp']))
+        c_sl.metric("防守止損", fmt_price(mtf_res['sl']))
 
     st.divider()
 
     # --- Chart ---
+    df_chart = add_indicators(df_chart)
+    pivots = calculate_zigzag(df_chart); bull_fvg, bear_fvg = calculate_fvg(df_chart)
+    
     indicator_mode = st.radio("副圖", ["RSI", "MACD"], horizontal=True, label_visibility="collapsed")
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.15, 0.25], subplot_titles=("價格", "成交量", indicator_mode))
-    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
+    
+    fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
+    
     if show_six:
-        fig.add_trace(go.Scatter(x=df.index, y=df['EMA20'], name='EMA20', line=dict(width=1, color='yellow')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], name='EMA60', line=dict(width=1, color='cyan')), row=1, col=1)
-    if show_bb:
-        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)'), fill='tonexty', fillcolor='rgba(255,255,255,0.05)'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA20'], name='EMA20', line=dict(width=1, color='yellow')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA60'], name='EMA60', line=dict(width=1, color='cyan')), row=1, col=1)
     if show_fvg:
-        for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y', row=1, col=1)
-        for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.15)", line_width=0, xref='x', yref='y', row=1, col=1)
+        for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df_chart.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y', row=1, col=1)
+        for f in bear_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df_chart.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(255,0,0,0.15)", line_width=0, xref='x', yref='y', row=1, col=1)
     if show_zigzag and pivots:
         px = [p['idx'] for p in pivots]; py = [p['val'] for p in pivots]
         fig.add_trace(go.Scatter(x=px, y=py, mode='lines+markers', name='ZigZag', line=dict(color='orange', width=2), marker_size=4), row=1, col=1)
@@ -372,21 +389,28 @@ if df is not None and not df.empty:
                 label_clr = '#00FF00' if 'H' in p['label'] and p['type'] == 'high' else 'red'
                 fig.add_annotation(x=p['idx'], y=p['val'], text=p['label'], showarrow=False, font=dict(color=label_clr, size=10), yshift=15 if p['type']=='high' else -15, row=1, col=1)
     
-    if st.session_state.ai_entry > 0:
-        fig.add_hline(y=st.session_state.ai_entry, line_dash="dot", line_color="white", annotation_text="AI 進場", row=1, col=1)
-        fig.add_hline(y=st.session_state.ai_tp, line_dash="dot", line_color="#00FF00", annotation_text="AI 止盈", row=1, col=1)
-        fig.add_hline(y=st.session_state.ai_sl, line_dash="dot", line_color="red", annotation_text="AI 止損", row=1, col=1)
+    if show_orders:
+        if st.session_state.positions:
+            for pos in st.session_state.positions:
+                if pos['symbol'] == symbol:
+                    if pos.get('tp', 0) > 0: fig.add_hline(y=pos['tp'], line_dash="dashdot", line_color="#00FF00", annotation_text=f"止盈")
+                    if pos.get('sl', 0) > 0: fig.add_hline(y=pos['sl'], line_dash="dashdot", line_color="#FF0000", annotation_text=f"止損")
+        if st.session_state.pending_orders:
+            for ord in st.session_state.pending_orders:
+                if ord['symbol'] == symbol: fig.add_hline(y=ord['entry'], line_dash="dash", line_color="orange", annotation_text=f"掛單")
 
-    colors = ['#00C853' if c >= o else '#FF3D00' for c, o in zip(df['Close'], df['Open'])]
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Vol', marker_color=colors), row=2, col=1)
+    colors = ['#00C853' if c >= o else '#FF3D00' for c, o in zip(df_chart['Close'], df_chart['Open'])]
+    fig.add_trace(go.Bar(x=df_chart.index, y=df_chart['Volume'], name='Vol', marker_color=colors), row=2, col=1)
+
     if indicator_mode == "RSI":
-        fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(width=2, color='violet')), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['RSI'], name='RSI', line=dict(width=2, color='violet')), row=3, col=1)
         fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1); fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
     else: 
-        fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', line=dict(width=1, color='cyan')), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], name='Signal', line=dict(width=1, color='orange')), row=3, col=1)
-        hist_colors = ['#00C853' if h >= 0 else '#FF3D00' for h in df['Hist']]
-        fig.add_trace(go.Bar(x=df.index, y=df['Hist'], name='Hist', marker_color=hist_colors), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['MACD'], name='MACD', line=dict(width=1, color='cyan')), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['Signal'], name='Signal', line=dict(width=1, color='orange')), row=3, col=1)
+        hist_colors = ['#00C853' if h >= 0 else '#FF3D00' for h in df_chart['Hist']]
+        fig.add_trace(go.Bar(x=df_chart.index, y=df_chart['Hist'], name='Hist', marker_color=hist_colors), row=3, col=1)
+
     fig.update_layout(template="plotly_dark", height=700, margin=dict(l=10, r=10, t=10, b=10), showlegend=False, dragmode='pan')
     fig.update_xaxes(rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False, 'modeBarButtonsToRemove': ['lasso2d', 'select2d']})
@@ -402,20 +426,29 @@ if df is not None and not df.empty:
                 total_unrealized += pos['margin'] * (((lp - pos['entry']) / pos['entry']) * pos['lev'] * d)
                 total_margin += pos['margin']
     equity = st.session_state.balance + total_margin + total_unrealized
-    if equity <= 0: st.error("💀 帳戶爆倉！"); st.session_state.positions=[]; st.session_state.pending_orders=[]; st.session_state.balance=0; save_data(); st.rerun()
+    
+    # 爆倉檢測
+    if equity <= 0 and st.session_state.positions:
+        st.error("💀 帳戶爆倉！所有倉位已強制平倉。")
+        st.session_state.positions = []
+        st.session_state.pending_orders = []
+        st.session_state.balance = 0
+        save_data()
+        st.rerun()
 
     c_w1, c_w2, c_w3 = st.columns(3)
-    c_w1.metric("💰 權益", f"${equity:,.2f}")
-    c_w2.metric("💵 餘額", f"${st.session_state.balance:,.2f}")
-    c_w3.metric("🔥 盈虧", f"${total_unrealized:+.2f} U", delta_color="normal")
+    c_w1.metric("💰 權益 (Equity)", f"${equity:,.2f}")
+    c_w2.metric("💵 可用餘額", f"${st.session_state.balance:,.2f}")
+    c_w3.metric("🔥 盈虧 (PnL)", f"${total_unrealized:+.2f} U", delta_color="normal")
 
     tab_trade, tab_ord, tab_hist = st.tabs(["🚀 下單", "📋 委託", "📜 歷史"])
     
     with tab_trade:
         order_type = st.radio("類型", ["⚡ 市價", "⏱️ 掛單"], horizontal=True, label_visibility="collapsed")
         c1, c2 = st.columns(2)
-        side = c1.selectbox("方向", ["🟢 做多", "🔴 做空"], index=0 if ai_res['dir']=="做多 (Long)" else 1)
-        lev = c2.number_input("槓桿", 1, 125, 20)
+        side = c1.selectbox("方向", ["🟢 做多", "🔴 做空"], index=0 if mtf_res['score']>0 else 1)
+        # [修復] 槓桿上限調高至 200
+        lev = c2.number_input("槓桿", min_value=1, max_value=200, value=20)
         
         def_p = curr_price
         if "掛單" in order_type and st.session_state.ai_entry > 0: def_p = st.session_state.ai_entry
@@ -426,7 +459,9 @@ if df is not None and not df.empty:
         if c_p2.button("50%", use_container_width=True, on_click=set_amt, args=(0.50,)): pass
         if c_p3.button("75%", use_container_width=True, on_click=set_amt, args=(0.75,)): pass
         if c_p4.button("Max", use_container_width=True, on_click=set_amt, args=(1.00,)): pass
-        amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_box), min_value=1.0, key="trade_amt_box")
+        
+        # [關鍵] 綁定 trade_amt_box 變數
+        amt = st.number_input("本金 (U)", value=float(st.session_state.trade_amt_box), min_value=1.0, key="trade_amt_box_input", on_change=lambda: st.session_state.update({"trade_amt_box": st.session_state.trade_amt_box_input}))
         
         with st.expander("止盈止損 (預設 AI 建議)", expanded=True):
             def_tp = st.session_state.ai_tp if st.session_state.ai_tp > 0 else 0.0
