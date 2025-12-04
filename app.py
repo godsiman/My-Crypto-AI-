@@ -7,20 +7,12 @@ from plotly.subplots import make_subplots
 from scipy.signal import argrelextrema
 from datetime import datetime
 
-# --- 頁面設定 ---
-st.set_page_config(page_title="全方位戰情室 AI (v30.1)", layout="wide")
-st.title("💎 全方位戰情室 AI (v30.1 智能精準報價版)")
-
-# --- 核心工具函數：智能價格格式化 ---
-def fmt_price(val):
-    if val is None: return "N/A"
-    if val < 0.01: return f"${val:.6f}"  # 超小幣 (PEPE)
-    elif val < 20: return f"${val:.4f}"  # 小幣 (DOGE)
-    else: return f"${val:,.2f}"         # 大幣/股票 (BTC, TSLA)
+st.set_page_config(page_title="全方位戰情室 AI (v30.0)", layout="wide")
+st.title("🏦 全方位戰情室 AI (v30.0 基金經理人版)")
 
 # --- Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
-if 'position' not in st.session_state: st.session_state.position = None 
+if 'positions' not in st.session_state: st.session_state.positions = [] # 改成列表，支援多倉位
 if 'history' not in st.session_state: st.session_state.history = []
 
 # --- 側邊欄 ---
@@ -189,7 +181,7 @@ def calculate_score_v17(pivots, last, df, bull_fvg, bear_fvg, bull_div, bear_div
     return score, struct_txt, six_txt, fvg_txt, div_txt, rsi_txt
 
 def generate_ai_report(symbol, price, score, struct, six, fvg, div, rsi_txt, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning):
-    report = f"**【市場掃描】** {symbol} 現價 **{fmt_price(price)}**。\\n"
+    report = f"**【市場掃描】** {symbol} 現價 **${price:,.2f}**。\\n"
     abs_score = abs(score)
     direction = "做多" if score > 0 else "做空"
     color_emoji = "🟢" if score > 0 else "🔴"
@@ -199,18 +191,20 @@ def generate_ai_report(symbol, price, score, struct, six, fvg, div, rsi_txt, buy
     else: report += f"⚖️ **盤整觀望 (評分: {score}/10)**。"
     report += "\\n\\n**【交易計畫】**"
     if risk_warning and "破" in risk_warning: report += f"\\n⛔ 結構已破壞，暫無交易建議。"
-    elif score >= 0: report += f"\\n🛒 **建議入場**: **{entry_zone}**\\n🎯 **止盈 TP1**: **{fmt_price(tp1)}**\\n🛡️ **止損 SL**: **{fmt_price(buy_sl)}**"
-    else: report += f"\\n🛒 **建議空點**: **{entry_zone}**\\n🎯 **止盈 TP1**: **{fmt_price(tp1)}**\\n🛡️ **止損 SL**: **{fmt_price(sell_sl)}**"
+    elif score >= 0: report += f"\\n🛒 **建議入場**: **{entry_zone}**\\n🎯 **止盈 TP1**: **${tp1:,.2f}**\\n🛡️ **止損 SL**: **${buy_sl:,.2f}**"
+    else: report += f"\\n🛒 **建議空點**: **{entry_zone}**\\n🎯 **止盈 TP1**: **${tp1:,.2f}**\\n🛡️ **止損 SL**: **${sell_sl:,.2f}**"
     return report
 
-# --- 🏦 平倉/減倉函數 ---
-def close_position(exit_price, percentage=100, reason="手動平倉"):
-    pos = st.session_state.position
-    if not pos: return 0, 0
+# --- 🏦 平倉/減倉函數 (支援多倉位) ---
+def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=0):
+    if pos_index >= len(st.session_state.positions): return
+    
+    pos = st.session_state.positions[pos_index]
     close_margin = pos['margin'] * (percentage / 100)
     direction = 1 if pos['type'] == 'Long' else -1
     pnl_pct = ((exit_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
     pnl_usdt = close_margin * (pnl_pct / 100)
+    
     st.session_state.balance += (close_margin + pnl_usdt)
     st.session_state.history.append({
         "時間": datetime.now().strftime("%m-%d %H:%M"),
@@ -222,9 +216,11 @@ def close_position(exit_price, percentage=100, reason="手動平倉"):
         "獲利%": round(pnl_pct, 2),
         "原因": reason
     })
-    if percentage == 100: st.session_state.position = None
-    else: st.session_state.position['margin'] -= close_margin
-    return pnl_usdt, pnl_pct
+    
+    if percentage == 100:
+        st.session_state.positions.pop(pos_index)
+    else:
+        st.session_state.positions[pos_index]['margin'] -= close_margin
 
 # --- 主程式 ---
 df = get_data(symbol, period, interval, interval_ui)
@@ -234,24 +230,30 @@ if df is not None:
     curr_price = last['Close']
     
     # ---------------------------
-    # 🏦 華爾街操盤手專區 (Sidebar)
+    # 🏦 模擬交易所 (Sidebar)
     # ---------------------------
     st.sidebar.markdown("---")
     with st.sidebar.expander("🏦 模擬交易所 (Exchange)", expanded=True):
         st.metric("💰 總資產 (USDT)", f"${st.session_state.balance:,.2f}")
         
-        if st.session_state.position is None:
-            st.markdown("##### 🚀 開立新倉位")
-            col_s1, col_s2 = st.columns(2)
-            trade_type = col_s1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"])
-            leverage = col_s2.number_input("槓桿倍數", 1, 125, 20)
-            principal = st.number_input("投入本金 (U)", 10, int(st.session_state.balance), 1000)
-            st.caption("自動平倉設定 (選填)")
-            set_tp = st.number_input("止盈價格 (TP)", value=0.0, format="%.4f")
-            set_sl = st.number_input("止損價格 (SL)", value=0.0, format="%.4f")
-            
-            if st.button("確認下單", type="primary"):
-                st.session_state.position = {
+        # --- 開倉區 ---
+        st.markdown("##### 🚀 開立新倉位")
+        col_s1, col_s2 = st.columns(2)
+        trade_type = col_s1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"])
+        leverage = col_s2.number_input("槓桿", 1, 125, 20)
+        
+        # 讓使用者輸入任意本金
+        principal = st.number_input("投入本金 (U)", 10.0, float(st.session_state.balance), 1000.0)
+        
+        st.caption("自動平倉設定 (選填)")
+        set_tp = st.number_input("止盈 (TP)", value=0.0)
+        set_sl = st.number_input("止損 (SL)", value=0.0)
+        
+        if st.button("確認下單", type="primary"):
+            if principal > st.session_state.balance:
+                st.error("餘額不足！")
+            else:
+                new_pos = {
                     "symbol": symbol,
                     "type": "Long" if "做多" in trade_type else "Short",
                     "entry": curr_price,
@@ -261,48 +263,62 @@ if df is not None:
                     "sl": set_sl,
                     "time": datetime.now().strftime('%m-%d %H:%M')
                 }
+                st.session_state.positions.append(new_pos)
                 st.session_state.balance -= principal
                 st.rerun()
-        else:
-            # --- 持倉監控 ---
-            pos = st.session_state.position
-            if pos['symbol'] == symbol:
+
+        # --- 持倉列表 ---
+        if st.session_state.positions:
+            st.markdown("---")
+            st.markdown("##### 🔥 持倉列表")
+            
+            # 遍歷所有倉位
+            for i, pos in enumerate(st.session_state.positions):
+                # 只即時更新當前查看的幣種的價格，其他幣種用上次價格或暫存(這裡簡化處理，顯示警告需切換)
+                # 為了體驗，如果不是當前幣種，我們只顯示基本資訊
+                is_current = (pos['symbol'] == symbol)
+                
+                current_p = curr_price if is_current else pos['entry'] # 如果不是當前幣種，暫不計算即時損益
+                
                 direction = 1 if pos['type'] == 'Long' else -1
-                pnl_pct = ((curr_price - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
+                pnl_pct = ((current_p - pos['entry']) / pos['entry']) * pos['lev'] * direction * 100
                 pnl_usdt = pos['margin'] * (pnl_pct / 100)
-                liq_price = pos['entry'] * (1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry'] * (1 + 1/pos['lev'])
                 
-                close_reason = None
-                if (pos['type'] == 'Long' and curr_price <= liq_price) or (pos['type'] == 'Short' and curr_price >= liq_price): close_reason = "💀 爆倉"
-                elif pos['tp'] > 0 and ((pos['type'] == 'Long' and curr_price >= pos['tp']) or (pos['type'] == 'Short' and curr_price <= pos['tp'])): close_reason = "🎯 止盈觸發"
-                elif pos['sl'] > 0 and ((pos['type'] == 'Long' and curr_price <= pos['sl']) or (pos['type'] == 'Short' and curr_price >= pos['sl'])): close_reason = "🛡️ 止損觸發"
-                
-                if close_reason: close_position(curr_price, 100, close_reason); st.rerun()
-
-                st.info(f"🔥 **{pos['type']} {pos['lev']}x**")
-                st.caption(f"🕒 開倉: {pos['time']}")
-                st.write(f"💵 本金: **${pos['margin']:.2f}** | 均價: **{fmt_price(pos['entry'])}**")
-                c1, c2 = st.columns(2)
-                c1.metric("未實現損益", f"${pnl_usdt:.2f}", f"{pnl_pct:.2f}%")
-                c2.write(f"💀 爆倉: {fmt_price(liq_price)}")
-                
-                with st.expander("📝 修改訂單 / 平倉"):
-                    new_tp = st.number_input("修改 TP", value=pos['tp'], format="%.4f")
-                    new_sl = st.number_input("修改 SL", value=pos['sl'], format="%.4f")
-                    if st.button("更新訂單"):
-                        st.session_state.position['tp'] = new_tp
-                        st.session_state.position['sl'] = new_sl
-                        st.success("訂單更新成功")
+                # 顯示倉位卡片
+                with st.container():
+                    st.caption(f"#{i+1} {pos['symbol']} | {pos['time']}")
+                    col_p1, col_p2 = st.columns(2)
+                    col_p1.write(f"**{pos['type']} {pos['lev']}x**")
+                    
+                    if is_current:
+                        col_p2.metric("損益", f"${pnl_usdt:.2f}", f"{pnl_pct:.2f}%")
+                        
+                        # 自動平倉檢查
+                        if pos['type']=='Long': liq = pos['entry'] * (1 - 1/pos['lev'])
+                        else: liq = pos['entry'] * (1 + 1/pos['lev'])
+                        
+                        close_reason = None
+                        if (pos['type']=='Long' and current_p <= liq) or (pos['type']=='Short' and current_p >= liq): close_reason="💀 爆倉"
+                        elif pos['tp']>0 and ((pos['type']=='Long' and current_p>=pos['tp']) or (pos['type']=='Short' and current_p<=pos['tp'])): close_reason="🎯 止盈"
+                        elif pos['sl']>0 and ((pos['type']=='Long' and current_p<=pos['sl']) or (pos['type']=='Short' and current_p>=pos['sl'])): close_reason="🛡️ 止損"
+                        
+                        if close_reason: 
+                            close_position(i, 100, close_reason, current_p)
+                            st.rerun()
+                            
+                        if st.button(f"平倉 #{i+1}", key=f"close_{i}"):
+                            close_position(i, 100, "手動平倉", current_p)
+                            st.rerun()
+                    else:
+                        col_p2.write("*(切換至該幣種查看)*")
+                        
                     st.markdown("---")
-                    close_ratio = st.slider("平倉比例 %", 0, 100, 100, 25)
-                    if st.button(f"執行平倉 {close_ratio}%", type="primary"): close_position(curr_price, close_ratio, "手動平倉"); st.rerun()
-            else:
-                st.warning(f"目前持有 {pos['symbol']} 倉位。")
 
+        # 歷史記錄
         if st.session_state.history:
             with st.sidebar.expander("📜 歷史交易"):
                 hist_df = pd.DataFrame(st.session_state.history[::-1])
-                st.dataframe(hist_df[['幣種', '獲利%', '損益(U)', '時間']], hide_index=True)
+                st.dataframe(hist_df[['幣種', '獲利%', '損益(U)']], hide_index=True)
 
     # --- 主分析邏輯 ---
     pivots = calculate_zigzag(df)
@@ -316,7 +332,9 @@ if df is not None:
     buy_sl = pivot_lows[-1] if pivot_lows else last['Close'] - 2*atr
     sell_sl = pivot_highs[-1] if pivot_highs else last['Close'] + 2*atr
     
-    if buy_sl >= last['Close']: buy_sl = last['Close'] - 2*atr
+    # 🚨 邏輯防呆強制修正 (v30.0 更新)
+    # 確保做多 SL < 現價，做空 SL > 現價
+    if buy_sl >= last['Close']: buy_sl = last['Close'] - 2*atr 
     if sell_sl <= last['Close']: sell_sl = last['Close'] + 2*atr
 
     tp1 = 0; tp2 = 0; entry_zone = "現價"; risk_warning = "" 
@@ -328,24 +346,16 @@ if df is not None:
         if score >= 0: 
             tp1 = lh; tp2 = ll + diff * 1.618
             fib_low = ll + diff * 0.382; fib_high = ll + diff * 0.618
-            if last['Close'] < fib_high and last['Close'] > buy_sl: 
-                entry_zone = f"{fmt_price(last['Close'])} (現價優)"
-            else: 
-                entry_zone = f"{fmt_price(fib_low)} ~ {fmt_price(fib_high)}"
-            
-            if last['Close'] >= tp1:
-                tp1 = ll + diff * 1.272; tp2 = ll + diff * 1.618; risk_warning = "價格已創新高，止盈上移"
+            if last['Close'] < fib_high and last['Close'] > buy_sl: entry_zone = f"${last['Close']:,.2f} (現價優)"
+            else: entry_zone = f"${fib_low:,.2f} ~ ${fib_high:,.2f}"
+            if last['Close'] >= tp1: risk_warning = "已達前高 (TP1)，不宜追多。"
             elif last['Close'] < buy_sl: risk_warning = "❌ 結構破壞 (跌破止損)。"; score = 0
         else:
             tp1 = ll; tp2 = lh - diff * 1.618
             fib_low = lh - diff * 0.618; fib_high = lh - diff * 0.382
-            if last['Close'] > fib_low and last['Close'] < sell_sl: 
-                entry_zone = f"{fmt_price(last['Close'])} (現價優)"
-            else: 
-                entry_zone = f"{fmt_price(fib_low)} ~ {fmt_price(fib_high)}"
-            
-            if last['Close'] <= tp1:
-                tp1 = lh - diff * 1.272; tp2 = lh - diff * 1.618; risk_warning = "價格已創新低，止盈下移"
+            if last['Close'] > fib_low and last['Close'] < sell_sl: entry_zone = f"${last['Close']:,.2f} (現價優)"
+            else: entry_zone = f"${fib_low:,.2f} ~ ${fib_high:,.2f}"
+            if last['Close'] <= tp1: risk_warning = "已破前低 (TP1)，不宜追空。"
             elif last['Close'] > sell_sl: risk_warning = "❌ 結構破壞 (突破止損)。"; score = 0
 
     st.info("🛡️ **AI 實戰風控報告**")
@@ -365,11 +375,11 @@ if df is not None:
     m1.metric("AI 評級", score_display, action_label)
     m2.metric("建議入場", entry_zone.split("~")[0] if "~" in entry_zone else "現價", "校正後")
     if score >= 0:
-        m3.metric("止盈 TP1", fmt_price(tp1), "目標")
-        m4.metric("止損 SL", fmt_price(buy_sl), "防守", delta_color="inverse")
+        m3.metric("止盈 TP1", f"${tp1:,.2f}", "目標")
+        m4.metric("止損 SL", f"${buy_sl:,.2f}", "防守", delta_color="inverse")
     else:
-        m3.metric("止盈 TP1", fmt_price(tp1), "目標", delta_color="inverse")
-        m4.metric("止損 SL", fmt_price(sell_sl), "防守", delta_color="normal")
+        m3.metric("止盈 TP1", f"${tp1:,.2f}", "目標", delta_color="inverse")
+        m4.metric("止損 SL", f"${sell_sl:,.2f}", "防守", delta_color="normal")
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
     fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name='價格', line=dict(color='white', width=2)), row=1, col=1)
@@ -389,8 +399,8 @@ if df is not None:
             clr = 'red' if p['type']=='high' else '#00FF00'
             fig.add_annotation(x=p['idx'], y=p['val'], text=f"<b>{txt}</b>", showarrow=False, font=dict(color=clr, size=14), yshift=20 if p['type']=='high' else -20, row=1, col=1)
     if show_fib and tp1 > 0:
-        fig.add_hline(y=tp1, line_dash="dash", line_color="yellow", annotation_text=f"TP1 {fmt_price(tp1)}", row=1, col=1)
-        fig.add_hline(y=tp2, line_dash="dash", line_color="#00FF00", annotation_text=f"TP2 {fmt_price(tp2)}", row=1, col=1)
+        fig.add_hline(y=tp1, line_dash="dash", line_color="yellow", annotation_text=f"TP1 {tp1:.2f}", row=1, col=1)
+        fig.add_hline(y=tp2, line_dash="dash", line_color="#00FF00", annotation_text=f"TP2 {tp2:.2f}", row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='cyan', width=2)), row=2, col=1)
     fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
     fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
