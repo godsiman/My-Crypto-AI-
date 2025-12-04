@@ -11,7 +11,7 @@ import os
 
 # --- Page setup ---
 st.set_page_config(page_title="全方位戰情室 AI", layout="wide")
-st.markdown("### 🏦 全方位戰情室 AI (v43.0 圖表旗艦版)")
+st.markdown("### 🏦 全方位戰情室 AI (v44.0 視覺降噪版)")
 
 # --- Persistence System ---
 DATA_FILE = "trade_data.json"
@@ -166,15 +166,15 @@ if st.sidebar.button("🚀 載入 K 線"):
 symbol = st.session_state.chart_symbol 
 interval_ui = st.sidebar.radio("週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
-# 視覺化開關
+# 視覺化開關 (預設關閉部分雜訊)
 show_six = st.sidebar.checkbox("EMA 均線", value=True)
-show_bb = st.sidebar.checkbox("布林通道 (BB)", value=False) # 新增
-show_zigzag = st.sidebar.checkbox("ZigZag", value=True)
-show_fvg = st.sidebar.checkbox("FVG 缺口", value=True)
-show_fib = st.sidebar.checkbox("Fib 止盈", value=True)
+show_bb = st.sidebar.checkbox("布林通道", value=False) 
+show_zigzag = st.sidebar.checkbox("ZigZag (結構)", value=False) # 預設關閉
+show_fvg = st.sidebar.checkbox("FVG (缺口)", value=False) # 預設關閉
+show_fib = st.sidebar.checkbox("Fib (止盈)", value=True)
 show_orders = st.sidebar.checkbox("圖表掛單", value=True)
 
-# --- [新增] 錢包管理區 ---
+# --- 錢包管理 ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("💰 錢包管理"):
     st.caption(f"餘額: ${st.session_state.balance:,.2f}")
@@ -203,7 +203,6 @@ def get_data(symbol, period, interval):
             logic = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
             df = df.resample('4h').apply(logic).dropna()
         
-        # Basic Calc
         df['Delta'] = df['Close'].diff()
         delta = df['Delta']
         gain = (delta.where(delta > 0, 0)).fillna(0)
@@ -211,12 +210,10 @@ def get_data(symbol, period, interval):
         rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
         df['RSI'] = 100 - (100 / (1 + rs))
         
-        # EMA
         df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
         df['EMA60'] = df['Close'].ewm(span=60, adjust=False).mean()
         df['EMA120'] = df['Close'].ewm(span=120, adjust=False).mean()
         
-        # BB (Bollinger Bands)
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['STD20'] = df['Close'].rolling(window=20).std()
         df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2)
@@ -229,7 +226,19 @@ def get_data(symbol, period, interval):
         df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
         df['Hist'] = df['MACD'] - df['Signal']
 
-        # ATR
+        # MACD Crossover Signal
+        # 1 = Golden Cross, -1 = Death Cross, 0 = None
+        df['MACD_Cross'] = 0
+        # Use shift to find crossover
+        prev_macd = df['MACD'].shift(1)
+        prev_sig = df['Signal'].shift(1)
+        
+        golden = (prev_macd < prev_sig) & (df['MACD'] > df['Signal'])
+        death = (prev_macd > prev_sig) & (df['MACD'] < df['Signal'])
+        
+        df.loc[golden, 'MACD_Cross'] = 1
+        df.loc[death, 'MACD_Cross'] = -1
+
         df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
         df['ATR'] = df['TR'].rolling(14).mean()
         
@@ -397,11 +406,9 @@ if df is not None and not df.empty:
 
     st.info(generate_ai_report(symbol, last['Close'], score, struct_t, six_t, fvg_t, div_t, rsi_t, buy_sl, sell_sl, tp1, tp2, entry_zone, risk_warning))
 
-    # --- Chart Area (Enhanced) ---
-    # 副圖切換
-    indicator_mode = st.radio("副圖指標", ["RSI", "MACD"], horizontal=True, label_visibility="collapsed")
+    # --- Chart Area ---
+    indicator_mode = st.radio("副圖", ["RSI", "MACD"], horizontal=True, label_visibility="collapsed")
 
-    # K線 + 成交量 + 副圖 (3 Row Layout)
     fig = make_subplots(
         rows=3, cols=1, 
         shared_xaxes=True, 
@@ -410,14 +417,14 @@ if df is not None and not df.empty:
         subplot_titles=("價格", "成交量", indicator_mode)
     )
 
-    # 1. 主圖 (K線 + 均線 + BB)
+    # 1. Main
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
     if show_six:
         fig.add_trace(go.Scatter(x=df.index, y=df['EMA20'], name='EMA20', line=dict(width=1, color='yellow')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], name='EMA60', line=dict(width=1, color='cyan')), row=1, col=1)
     if show_bb:
-        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB Upper', line=dict(width=1, color='rgba(255,255,255,0.3)')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB Lower', line=dict(width=1, color='rgba(255,255,255,0.3)'), fill='tonexty', fillcolor='rgba(255,255,255,0.05)'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB', line=dict(width=1, color='rgba(255,255,255,0.3)'), fill='tonexty', fillcolor='rgba(255,255,255,0.05)'), row=1, col=1)
     
     if show_fvg:
         for f in bull_fvg: fig.add_shape(type="rect", x0=f['start'], x1=df.index[-1], y0=f['bottom'], y1=f['top'], fillcolor="rgba(0,255,0,0.2)", line_width=0, xref='x', yref='y')
@@ -437,11 +444,11 @@ if df is not None and not df.empty:
             for ord in st.session_state.pending_orders:
                 if ord['symbol'] == symbol: fig.add_hline(y=ord['entry'], line_dash="dash", line_color="orange", annotation_text=f"掛單")
 
-    # 2. 成交量 (Volume) - 紅綠柱狀
+    # 2. Volume
     colors = ['#00C853' if c >= o else '#FF3D00' for c, o in zip(df['Close'], df['Open'])]
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color=colors), row=2, col=1)
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Vol', marker_color=colors), row=2, col=1)
 
-    # 3. 副圖 (RSI 或 MACD)
+    # 3. Sub (RSI or MACD)
     if indicator_mode == "RSI":
         fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(width=2, color='violet')), row=3, col=1)
         fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
@@ -451,6 +458,22 @@ if df is not None and not df.empty:
         fig.add_trace(go.Scatter(x=df.index, y=df['Signal'], name='Signal', line=dict(width=1, color='orange')), row=3, col=1)
         hist_colors = ['#00C853' if h >= 0 else '#FF3D00' for h in df['Hist']]
         fig.add_trace(go.Bar(x=df.index, y=df['Hist'], name='Hist', marker_color=hist_colors), row=3, col=1)
+        
+        # --- Add MACD Crossover Markers ---
+        gc_data = df[df['MACD_Cross'] == 1]
+        dc_data = df[df['MACD_Cross'] == -1]
+        
+        fig.add_trace(go.Scatter(
+            x=gc_data.index, y=gc_data['MACD'], 
+            mode='markers', name='金叉', 
+            marker=dict(symbol='triangle-up', color='#00FF00', size=10)
+        ), row=3, col=1)
+        
+        fig.add_trace(go.Scatter(
+            x=dc_data.index, y=dc_data['MACD'], 
+            mode='markers', name='死叉', 
+            marker=dict(symbol='triangle-down', color='#FF0000', size=10)
+        ), row=3, col=1)
 
     fig.update_layout(template="plotly_dark", height=700, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
     fig.update_xaxes(rangeslider_visible=False)
@@ -525,7 +548,6 @@ if df is not None and not df.empty:
                     u_pnl = pos['margin'] * (((live - pos['entry']) / pos['entry']) * pos['lev'] * d)
                     pnl_pct = (((live - pos['entry']) / pos['entry']) * pos['lev'] * d) * 100
                     
-                    # Triggers (TP/SL)
                     trig = None; r_ratio = 100
                     liq = pos['entry']*(1 - 1/pos['lev']) if pos['type']=='Long' else pos['entry']*(1 + 1/pos['lev'])
                     if (pos['type']=='Long' and live<=liq) or (pos['type']=='Short' and live>=liq): trig="💀 爆倉"
@@ -533,7 +555,6 @@ if df is not None and not df.empty:
                     elif pos.get('sl',0)>0 and ((pos['type']=='Long' and live<=pos['sl']) or (pos['type']=='Short' and live>=pos['sl'])): trig="🛡️ 止損"; st.session_state.positions[i]['sl']=0
                     if trig: close_position(i, r_ratio, trig, live); st.rerun()
 
-                    # UI
                     col_h1, col_h2 = st.columns([3, 1])
                     col_h1.markdown(f"**#{i+1} {pos['symbol']}**")
                     if col_h2.button(f"🔍 分析", key=f"ana_{i}"): st.session_state.chart_symbol = pos['symbol']; st.rerun()
