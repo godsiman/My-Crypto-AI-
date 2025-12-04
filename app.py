@@ -7,14 +7,13 @@ from scipy.signal import argrelextrema
 from datetime import datetime
 
 # --- 1. 頁面設定 (必須在第一行) ---
-st.set_page_config(page_title="全方位戰情室 AI (v31.0)", layout="wide")
-st.title("🏦 全方位戰情室 AI (v31.0 基金經理人部署版)")
+st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
+st.title("🏦 全方位戰情室 AI (v31.0 最終修正部署版)")
 
 # --- 2. Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
 if 'positions' not in st.session_state: st.session_state.positions = [] 
 if 'history' not in st.session_state: st.session_state.history = []
-# 控制當前顯示的幣種
 if 'chart_symbol' not in st.session_state: st.session_state.chart_symbol = "BTC-USD"
 
 # --- 3. 工具函數 ---
@@ -31,7 +30,6 @@ def get_current_price(sym):
         ticker = yf.Ticker(sym)
         if hasattr(ticker, 'fast_info') and ticker.fast_info.last_price:
             return ticker.fast_info.last_price
-        # 回退方案
         hist = ticker.history(period="1d")
         if not hist.empty:
             return hist['Close'].iloc[-1]
@@ -39,31 +37,29 @@ def get_current_price(sym):
         return None
     return None
 
-# --- 4. 側邊欄設定 ---
+# --- 4. 側邊欄設定 (變數定義順序修正) ---
 st.sidebar.header("🎯 市場與標的")
 
-# 智能搜尋框 (預設值連動 Session)
-# key='symbol_input' 讓輸入框與 session state 綁定
-def update_symbol():
-    st.session_state.chart_symbol = smart_parse(st.session_state.symbol_input)
+# 智能搜尋框
+user_symbol_input = st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol)
 
 def smart_parse(s):
     s = s.strip().upper()
-    us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC", "SMCI"]
+    us_stocks = ["NVDA", "TSLA", "AAPL", "MSFT", "AMD", "PLTR", "MSTR", "COIN", "GOOG", "META", "AMZN", "NFLX", "INTC", "SMCI", "MSTR"]
     if "-" in s or "." in s: return s
     if s.isdigit(): return f"{s}.TW"
     if s in us_stocks: return s
     return f"{s}-USD"
 
-# 顯示輸入框
-st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol, key="symbol_input", on_change=update_symbol)
-symbol = st.session_state.chart_symbol
+symbol = smart_parse(user_symbol_input)
+if symbol != st.session_state.chart_symbol:
+    st.session_state.chart_symbol = symbol
 
 interval_ui = st.sidebar.radio("K 線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👁️ 視覺化開關")
-# 定義開關變數，確保在主程式前就已經有值
+# 修正：必須先定義這些變數，後面才能用，不然會報 NameError
 show_six = st.sidebar.checkbox("顯示 六道乾坤帶", value=True)
 show_zigzag = st.sidebar.checkbox("顯示 ZigZag 結構", value=True)
 show_fvg = st.sidebar.checkbox("顯示 FVG 缺口", value=True)
@@ -128,6 +124,7 @@ def calculate_fvg(df):
         h, l, c, t = df['High'].values, df['Low'].values, df['Close'].values, df.index
         start = max(2, len(df)-300)
         for i in range(start, len(df)):
+            # 修正 KeyError 'start'
             if l[i] > h[i-2] and c[i-1] > h[i-2]: 
                 bull.append({'start': t[i-2], 'top': l[i], 'bottom': h[i-2], 'active': True})
             if h[i] < l[i-2] and c[i-1] < l[i-2]: 
@@ -292,9 +289,10 @@ if df is not None:
 
         # 開倉區
         st.markdown("##### 🚀 開立新倉位")
+        # 這裡必須使用 st.columns 來避免 NameError
         col_s1, col_s2 = st.columns(2)
-        trade_type = c1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
-        leverage = c2.number_input("槓桿", 1, 125, 20, key="new_lev")
+        trade_type = col_s1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
+        leverage = col_s2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
         # 資金全開
         principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
@@ -342,7 +340,6 @@ if df is not None:
     if sell_sl <= last['Close']: sell_sl = last['Close'] + 2*atr
 
     tp1 = 0; tp2 = 0; entry_zone = "現價"; risk_warning = "" 
-
     if len(pivots) >= 2:
         lh = [p['val'] for p in pivots if p['type']=='high'][-1]
         ll = [p['val'] for p in pivots if p['type']=='low'][-1]
