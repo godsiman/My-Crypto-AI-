@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v96.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v96.0 趨勢濾網版)")
+st.set_page_config(page_title="全方位戰情室 AI (v97.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v97.0 動態止盈版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -112,11 +112,10 @@ def calculate_indicators(df):
     df['DX'] = 100 * abs(df['+DI'] - df['-DI']) / (df['+DI'] + df['-DI'])
     df['ADX'] = df['DX'].ewm(alpha=1/14).mean()
 
-    # EMAs
     df['EMA7'] = df['Close'].ewm(span=7).mean()
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA60'] = df['Close'].ewm(span=60).mean()
-    df['EMA200'] = df['Close'].ewm(span=200).mean() # [新增] 牛熊分界線
+    df['EMA200'] = df['Close'].ewm(span=200).mean()
     
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
@@ -154,13 +153,17 @@ def get_chart_data(symbol, interval_ui):
         return df
     except: return None
 
-# --- [策略核心升級] 趨勢過濾回測 ---
+# --- [策略核心升級] ATR 動態追蹤止盈回測 ---
 def run_backtest_sniper(df, initial_capital=10000):
-    if df is None or len(df) < 200: return None # 至少需要200根算EMA200
+    if df is None or len(df) < 200: return None
     
     capital = initial_capital
     position = 0 # 0: Cash, 1: Long, -1: Short
     entry_price = 0.0
+    dynamic_sl = 0.0 # 動態止損價
+    highest_price = 0.0 # 持倉期間最高價 (做多用)
+    lowest_price = 0.0 # 持倉期間最低價 (做空用)
+    
     equity_curve = []
     trades = []
     
@@ -168,73 +171,91 @@ def run_backtest_sniper(df, initial_capital=10000):
         curr = df.iloc[i]
         timestamp = df.index[i]
         price = curr['Close']
+        atr = curr['ATR']
         
-        # --- 策略條件 (Strategy Logic) ---
-        
-        # 1. 趨勢定義 (EMA200 是絕對防線)
+        # 1. 趨勢定義
         is_bull_trend = price > curr['EMA200']
         is_bear_trend = price < curr['EMA200']
         
-        # 2. 進場訊號 (EMA交叉 + MACD確認 + RSI保護)
-        # 做多條件：
-        # - 價格 > EMA200 (牛市)
-        # - 價格 > EMA20 (短趨勢向上)
-        # - MACD 金叉 (動能向上)
-        # - RSI < 70 (不要追高)
+        # 2. 進場訊號
         buy_signal = (is_bull_trend and 
                       price > curr['EMA20'] and 
                       curr['MACD'] > curr['Signal'] and 
                       curr['RSI'] < 70)
                       
-        # 做空條件：
-        # - 價格 < EMA200 (熊市)
-        # - 價格 < EMA20 (短趨勢向下)
-        # - MACD 死叉 (動能向下)
-        # - RSI > 30 (不要追殺)
         sell_signal = (is_bear_trend and 
                        price < curr['EMA20'] and 
                        curr['MACD'] < curr['Signal'] and 
                        curr['RSI'] > 30)
         
-        # 3. 出場訊號 (Trailing Stop / 趨勢反轉)
-        # 多單出場：跌破 EMA20 就跑
-        exit_long = (position == 1 and price < curr['EMA20'])
-        # 空單出場：站上 EMA20 就跑
-        exit_short = (position == -1 and price > curr['EMA20'])
+        # --- 3. 出場邏輯 (動態止盈 + 保本) ---
+        exit_long = False
+        exit_short = False
+        
+        if position == 1: # 持多單
+            # 更新最高價
+            if price > highest_price: highest_price = price
+            
+            # ATR 吊燈止盈: 允許回撤 3倍 ATR
+            trailing_stop = highest_price - (3 * atr)
+            
+            # 保本機制: 如果獲利超過 1.5倍 ATR，止損上移至入場價
+            if price >= (entry_price + 1.5 * atr):
+                dynamic_sl = max(entry_price, trailing_stop)
+            else:
+                dynamic_sl = max(dynamic_sl, trailing_stop) # 止損只能上移，不能下移
+                
+            # 觸發出場
+            if price < dynamic_sl:
+                exit_long = True
+                
+        elif position == -1: # 持空單
+            if price < lowest_price: lowest_price = price
+            
+            trailing_stop = lowest_price + (3 * atr)
+            
+            if price <= (entry_price - 1.5 * atr):
+                dynamic_sl = min(entry_price, trailing_stop)
+            else:
+                dynamic_sl = min(dynamic_sl, trailing_stop)
+                
+            if price > dynamic_sl:
+                exit_short = True
         
         # --- 執行交易 ---
         
-        # 平倉優先
+        # 平倉
         if exit_long:
             pnl = (price - entry_price) / entry_price * capital
             capital += pnl
             position = 0
-            trades.append({'time': timestamp, 'type': '⚪ 平多 (TP/SL)', 'price': price, 'pnl': pnl, 'balance': capital})
+            trades.append({'time': timestamp, 'type': '⚪ 止盈離場 (Trailing)', 'price': price, 'pnl': pnl, 'balance': capital})
             
         elif exit_short:
             pnl = (entry_price - price) / entry_price * capital
             capital += pnl
             position = 0
-            trades.append({'time': timestamp, 'type': '⚪ 平空 (TP/SL)', 'price': price, 'pnl': pnl, 'balance': capital})
+            trades.append({'time': timestamp, 'type': '⚪ 止盈離場 (Trailing)', 'price': price, 'pnl': pnl, 'balance': capital})
             
-        # 開倉 (只有空手時才開)
+        # 開倉
         if position == 0:
             if buy_signal:
                 position = 1
                 entry_price = price
+                highest_price = price
+                dynamic_sl = price - (2 * atr) # 初始止損寬一點
                 trades.append({'time': timestamp, 'type': '🟢 順勢做多', 'price': price, 'balance': capital})
             elif sell_signal:
                 position = -1
                 entry_price = price
+                lowest_price = price
+                dynamic_sl = price + (2 * atr)
                 trades.append({'time': timestamp, 'type': '🔴 順勢做空', 'price': price, 'balance': capital})
                 
-        # 記錄每日權益
+        # 記錄權益
         curr_equity = capital
-        if position == 1:
-            curr_equity += (price - entry_price) / entry_price * capital
-        elif position == -1:
-            curr_equity += (entry_price - price) / entry_price * capital
-            
+        if position == 1: curr_equity += (price - entry_price) / entry_price * capital
+        elif position == -1: curr_equity += (entry_price - price) / entry_price * capital
         equity_curve.append({'time': timestamp, 'equity': curr_equity})
         
     return pd.DataFrame(equity_curve), pd.DataFrame(trades)
@@ -266,7 +287,7 @@ def get_institutional_strategy(symbol, current_interval_ui):
     last = df.iloc[-1]; prev = df.iloc[-2]
     micro_score = 0; signals = []
     
-    # 1. EMA200 濾網 (最重要)
+    # 1. EMA200
     is_bull_trend = last['Close'] > last['EMA200']
     if is_bull_trend:
         signals.append("🐃 位於 EMA200 之上 (長期看多)")
@@ -295,37 +316,35 @@ def get_institutional_strategy(symbol, current_interval_ui):
         micro_score -= 1
         
     if last['MACD'] > last['Signal']:
-        signals.append("🚀 MACD 金叉 (動能強)")
+        signals.append("🚀 MACD 金叉")
         micro_score += 1
     
-    # RSI Protection
     if last['RSI'] > 70:
-        signals.append("⚠️ RSI 超買 (禁止追多)")
+        signals.append("⚠️ RSI 超買")
         micro_score -= 1
     elif last['RSI'] < 30:
-        signals.append("⚠️ RSI 超賣 (禁止追空)")
+        signals.append("⚠️ RSI 超賣")
         micro_score += 1
 
     # Final Score
     final_score = (macro_score * 0.3) + (micro_score * 0.7)
     direction = "觀望"
     
-    # Logic for Direction
     if final_score >= 2.0 and is_bull_trend: 
         direction = "強力做多 (Strong Buy)"
-        action_msg = "🤖 AI 建議：牛市順勢單！現在是多頭回調後的上攻機會，建議做多。"
+        action_msg = "🤖 AI 建議：牛市順勢！回調有撐，建議做多。"
     elif final_score >= 0.5 and is_bull_trend: 
         direction = "嘗試做多 (Buy)"
-        action_msg = "🤖 AI 建議：長線是多頭，但短線還在整理，建議分批佈局。"
+        action_msg = "🤖 AI 建議：長線多頭，短線震盪，可嘗試低接。"
     elif final_score <= -2.0 and not is_bull_trend: 
         direction = "強力做空 (Strong Sell)"
-        action_msg = "🤖 AI 建議：熊市順勢單！空頭排列成形，反彈就是空點。"
+        action_msg = "🤖 AI 建議：熊市順勢！反彈無力，建議做空。"
     elif final_score <= -0.5 and not is_bull_trend: 
         direction = "嘗試做空 (Sell)"
-        action_msg = "🤖 AI 建議：長線是空頭，但短線有點超賣，建議反彈再空。"
+        action_msg = "🤖 AI 建議：長線空頭，短線超賣，反彈再空。"
     else:
         direction = "觀望 (Neutral)"
-        action_msg = "🤖 AI 建議：多空打架中 (EMA200 與短線方向不一致)，建議空手看戲。"
+        action_msg = "🤖 AI 建議：多空方向不一致，建議空手觀望。"
 
     if is_above_vwap:
         vwap_msg = "🟢 大戶成本線防守中，多頭有撐。"
@@ -337,14 +356,15 @@ def get_institutional_strategy(symbol, current_interval_ui):
     curr_price = last['Close']
     atr = last.get('ATR', curr_price * 0.02)
     
+    # 這裡顯示的建議點位是給人工參考的，回測用的是上面的動態邏輯
     if final_score > 0:
         entry = curr_price
-        tp = entry + (atr * 3)
-        sl = entry - (atr * 1.5)
+        tp = entry + (atr * 4) # 建議點位稍微拉大，配合動態止盈
+        sl = entry - (atr * 2)
     else:
         entry = curr_price
-        tp = entry - (atr * 3)
-        sl = entry + (atr * 1.5)
+        tp = entry - (atr * 4)
+        sl = entry + (atr * 2)
 
     return {
         "direction": direction,
@@ -562,7 +582,6 @@ if ai_res:
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
     
-    # EMA200 (紫色粗線)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA200'], line=dict(color='#E040FB', width=2), name='EMA200 (牛熊分界)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['VWAP'], line=dict(color='orange', width=2), name='VWAP'), row=1, col=1)
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA7'], line=dict(color='white', width=1), name='EMA7'), row=1, col=1)
@@ -689,8 +708,8 @@ if ai_res:
             st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
     with tab_backtest:
-        st.subheader(f"📈 {symbol} 歷史回測 (趨勢濾網模式)")
-        st.caption("策略：EMA200濾網 + RSI過濾 + EMA20停利")
+        st.subheader(f"📈 {symbol} 歷史回測 (動態止盈模式)")
+        st.caption("策略：EMA200趨勢 + ATR吊燈止盈 + 保本機制")
         if st.button("🚀 開始回測"):
             with st.spinner("正在穿越時空進行模擬交易..."):
                 eq_curve, trades_log = run_backtest_sniper(df_chart, 10000)
