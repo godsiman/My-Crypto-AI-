@@ -10,8 +10,8 @@ import os
 import time
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v70.0 終極版)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v70.0 終極多週期版)")
+st.set_page_config(page_title="全方位戰情室 AI (v70.1 修復版)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v70.1 修復穩定版)")
 
 # --- [核心] NpEncoder (解決存檔崩潰) ---
 class NpEncoder(json.JSONEncoder):
@@ -77,7 +77,6 @@ def fmt_price(val):
 def get_current_price(sym):
     try:
         ticker = yf.Ticker(sym)
-        # 嘗試從 fast_info 獲取，若失敗則抓 1 分鐘 K 線
         fi = getattr(ticker, 'fast_info', None)
         if fi and getattr(fi, 'last_price', None):
             return float(fi.last_price)
@@ -87,7 +86,7 @@ def get_current_price(sym):
     except: pass
     return None
 
-# --- [核心邏輯] 技術指標計算 (通用) ---
+# --- [核心邏輯] 技術指標計算 ---
 def calculate_indicators(df):
     if df is None or df.empty: return df
     df = df.copy()
@@ -107,7 +106,7 @@ def calculate_indicators(df):
     df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
     df['ATR'] = df['TR'].rolling(14).mean()
 
-    # ZigZag (簡易版)
+    # ZigZag (簡易)
     df['max_roll'] = df['High'].rolling(10, center=True).max()
     df['min_roll'] = df['Low'].rolling(10, center=True).min()
     
@@ -120,8 +119,8 @@ def calculate_indicators(df):
     
     return df
 
-# --- [超級核心] 多週期交叉分析 (Cross-Reference) ---
-@st.cache_data(ttl=300) # 緩存 5 分鐘，避免頻繁請求
+# --- [修復版] 多週期交叉分析 ---
+@st.cache_data(ttl=300)
 def get_mtf_analysis(symbol):
     intervals = {"M": "1mo", "W": "1wk", "D": "1d"}
     periods = {"M": "5y", "W": "2y", "D": "1y"}
@@ -155,46 +154,50 @@ def get_mtf_analysis(symbol):
             score -= 2
             trend_str = "空頭排列"
         else:
-            # 判斷是回調還是反彈
             if last['Close'] > last['EMA60']: trend_str = "多頭回調"
             elif last['Close'] < last['EMA60']: trend_str = "空頭反彈"
         
         # RSI 過濾
-        if last['RSI'] > 70: score -= 0.5 # 超買
-        if last['RSI'] < 30: score += 0.5 # 超賣
+        if last['RSI'] > 70: score -= 0.5
+        if last['RSI'] < 30: score += 0.5
         
         scores[tf] = score
         trends[tf] = trend_str
 
-    # 3. 交叉比對 (Cross-Reference Logic)
-    # 權重: 月(30%) + 週(30%) + 日(40%)
+    # 3. 交叉比對
     total_score = (scores.get("M",0) * 0.3) + (scores.get("W",0) * 0.3) + (scores.get("D",0) * 0.4)
     
-    # 產生建議
     direction = "觀望"
     if total_score >= 1.5: direction = "強力做多 (Strong Long)"
     elif total_score >= 0.5: direction = "嘗試做多 (Long)"
     elif total_score <= -1.5: direction = "強力做空 (Strong Short)"
     elif total_score <= -0.5: direction = "嘗試做空 (Short)"
     
-    # 找入場點 (基於日線 ATR)
-    last_d = data_store.get("D", data_store.get("W")).iloc[-1]
-    curr_price = last_d['Close']
-    atr = last_d.get('ATR', curr_price*0.02)
+    # 防呆：確保有數據計算價格
+    last_d = data_store.get("D", data_store.get("W", data_store.get("M")))
+    if last_d is None: return None
+    
+    last_row = last_d.iloc[-1]
+    curr_price = last_row['Close']
+    atr = last_row.get('ATR', curr_price*0.02)
     
     if total_score > 0:
-        entry = curr_price if trends.get("D") == "多頭回調" else curr_price # 如果正在回調就市價，否則追高
-        # 若日線 EMA20 在下方，掛在 EMA20 附近
-        if last_d['EMA20'] < curr_price:
-            entry = (curr_price + last_d['EMA20']) / 2
+        entry = curr_price if trends.get("D") == "多頭回調" else curr_price 
+        if last_row['EMA20'] < curr_price:
+            entry = (curr_price + last_row['EMA20']) / 2
         tp = entry + (atr * 3)
         sl = entry - (atr * 1.5)
     else:
         entry = curr_price
-        if last_d['EMA20'] > curr_price:
-            entry = (curr_price + last_d['EMA20']) / 2
+        if last_row['EMA20'] > curr_price:
+            entry = (curr_price + last_row['EMA20']) / 2
         tp = entry - (atr * 3)
         sl = entry + (atr * 1.5)
+
+    # [修復點] 確保回傳 'last_price' 且 df_d 存在
+    main_chart_df = data_store.get("D")
+    if main_chart_df is None:
+        main_chart_df = data_store.get("W", data_store.get("M"))
 
     return {
         "score": total_score,
@@ -204,16 +207,14 @@ def get_mtf_analysis(symbol):
         "entry": float(entry),
         "tp": float(tp),
         "sl": float(sl),
-        "last_close": float(curr_price),
-        "df_d": data_store.get("D") # 回傳日線給圖表用
+        "last_price": float(curr_price),  # [修復] 名稱統一
+        "df_chart": main_chart_df          # [修復] 改名並確保不為 None
     }
 
-# --- Dialogs (取代 Modal) ---
+# --- Dialogs ---
 @st.dialog("⚡ 倉位管理")
 def manage_position_dialog(i, pos, current_price):
     st.markdown(f"**{pos.get('symbol','--')}** ({pos.get('type','--')} x{float(pos.get('lev',1)):.0f})")
-    
-    # 計算盈虧
     try:
         entry = float(pos.get('entry', 0))
         lev = float(pos.get('lev', 1))
@@ -249,7 +250,6 @@ def close_position(pos_index, percentage, reason, exit_price):
     if pos_index >= len(st.session_state.positions): return
     pos = st.session_state.positions[pos_index]
     
-    # 計算部分平倉
     close_ratio = percentage / 100.0
     margin = float(pos.get('margin', 0))
     close_margin = margin * close_ratio
@@ -263,7 +263,6 @@ def close_position(pos_index, percentage, reason, exit_price):
     
     st.session_state.balance += return_amount
     
-    # 寫入歷史
     st.session_state.history.append({
         "時間": datetime.now().strftime("%m-%d %H:%M"),
         "幣種": pos.get('symbol'),
@@ -285,7 +284,6 @@ st.sidebar.header("🎯 戰情室設定")
 market = st.sidebar.radio("市場", ["加密貨幣", "美股", "台股"], index=0)
 st.session_state.market = market
 
-# 預設清單
 if market == "加密貨幣":
     targets = ["BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD", "XRP-USD", "BNB-USD"]
 elif market == "美股":
@@ -315,25 +313,31 @@ if st.sidebar.button("🗑️ 清空所有數據 (重置)"):
 
 # --- Main Logic ---
 
-# 1. 執行 AI 分析 (多週期)
 with st.spinner(f"正在連線 {symbol} 進行多週期戰略分析..."):
     ai_data = get_mtf_analysis(symbol)
 
 if ai_data:
-    curr_price = ai_data['last_price']
+    # [修復點] 安全讀取 last_price
+    curr_price = ai_data.get('last_price', 0.0)
     
-    # 把 AI 建議存入 session 供下單區使用
     st.session_state.ai_entry = ai_data['entry']
     st.session_state.ai_tp = ai_data['tp']
     st.session_state.ai_sl = ai_data['sl']
 
     # --- Header ---
     c1, c2, c3 = st.columns([2, 1, 1])
-    p_color = "#00C853" if ai_data['df_d'].iloc[-1]['Close'] >= ai_data['df_d'].iloc[-1]['Open'] else "#FF3D00"
+    # 確保 df_chart 存在
+    df = ai_data.get('df_chart')
+    
+    if df is not None and not df.empty:
+        is_up = df.iloc[-1]['Close'] >= df.iloc[-1]['Open']
+        p_color = "#00C853" if is_up else "#FF3D00"
+    else:
+        p_color = "#FFFFFF"
+
     c1.markdown(f"<h1 style='margin:0'>{symbol} <span style='color:{p_color}'>${curr_price:,.2f}</span></h1>", unsafe_allow_html=True)
     c2.metric("可用餘額", f"${st.session_state.balance:,.2f}")
     
-    # 計算總未結盈虧
     total_u_pnl = 0
     for p in st.session_state.positions:
         try:
@@ -346,8 +350,6 @@ if ai_data:
 
     # --- AI Dashboard ---
     st.markdown("### 🧠 戰情室分析報告")
-    
-    # 顯示三個週期的狀態
     k1, k2, k3, k4 = st.columns(4)
     
     def get_arrow(trend):
@@ -375,32 +377,28 @@ if ai_data:
         ec3.metric("防守止損 (SL)", fmt_price(ai_data['sl']))
 
     # --- Chart Area ---
-    df = ai_data['df_d'] # 使用日線繪圖
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
-    
-    # K線
-    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
-    # 均線
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
-    
-    # 標註持倉線
-    for pos in st.session_state.positions:
-        if pos['symbol'] == symbol:
-            fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
-    
-    # 指標
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='violet', width=2), name='RSI'), row=2, col=1)
-    fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
-    fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
-    
-    fig.update_layout(height=600, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan')
-    fig.update_xaxes(rangeslider_visible=False)
-    st.plotly_chart(fig, use_container_width=True)
+    if df is not None:
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
+        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA20'], line=dict(color='yellow', width=1), name='EMA20'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['EMA60'], line=dict(color='cyan', width=1), name='EMA60'), row=1, col=1)
+        
+        for pos in st.session_state.positions:
+            if pos['symbol'] == symbol:
+                fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
+        
+        fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='violet', width=2), name='RSI'), row=2, col=1)
+        fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
+        fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
+        
+        fig.update_layout(height=600, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan')
+        fig.update_xaxes(rangeslider_visible=False)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("⚠️ 無法顯示圖表數據")
 
     # --- Trading Area ---
     st.markdown("### ⚡ 交易控制台")
-    
     tab1, tab2 = st.tabs(["下單", "持倉管理"])
     
     with tab1:
@@ -410,7 +408,6 @@ if ai_data:
         amt = c_t3.number_input("本金 (U)", min_value=10.0, value=float(st.session_state.trade_amt_box))
         st.session_state.trade_amt_box = amt
         
-        # 自動填入 AI 建議
         with st.expander("進階設定 (止盈止損)", expanded=False):
             t_tp = st.number_input("止盈價格", value=st.session_state.ai_tp)
             t_sl = st.number_input("止損價格", value=st.session_state.ai_sl)
@@ -452,7 +449,6 @@ if ai_data:
                 p_sym = pos['symbol']
                 p_cur = get_current_price(p_sym)
                 if p_cur:
-                    # 顯示卡片
                     d = 1 if pos['type']=='Long' else -1
                     pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
                     clr = "#00C853" if pnl >= 0 else "#FF3D00"
@@ -473,4 +469,4 @@ if ai_data:
                         manage_position_dialog(i, pos, p_cur)
 
 else:
-    st.error(f"無法獲取 {symbol} 的數據，請檢查代碼是否正確。")
+    st.error(f"❌ 數據連接失敗: {symbol} (請檢查代碼或網路)")
