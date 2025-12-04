@@ -7,8 +7,8 @@ from scipy.signal import argrelextrema
 from datetime import datetime
 
 # --- 1. 頁面設定 (必須在第一行) ---
-st.set_page_config(page_title="全方位戰情室 AI (Cloud版)", layout="wide")
-st.title("🏦 全方位戰情室 AI (v31.0 最終修正部署版)")
+st.set_page_config(page_title="全方位戰情室 AI (v31.0)", layout="wide")
+st.title("🏦 全方位戰情室 AI (v31.0 基金經理人部署版)")
 
 # --- 2. Session 初始化 ---
 if 'balance' not in st.session_state: st.session_state.balance = 10000.0
@@ -31,6 +31,7 @@ def get_current_price(sym):
         ticker = yf.Ticker(sym)
         if hasattr(ticker, 'fast_info') and ticker.fast_info.last_price:
             return ticker.fast_info.last_price
+        # 回退方案
         hist = ticker.history(period="1d")
         if not hist.empty:
             return hist['Close'].iloc[-1]
@@ -42,7 +43,9 @@ def get_current_price(sym):
 st.sidebar.header("🎯 市場與標的")
 
 # 智能搜尋框 (預設值連動 Session)
-user_symbol_input = st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol)
+# key='symbol_input' 讓輸入框與 session state 綁定
+def update_symbol():
+    st.session_state.chart_symbol = smart_parse(st.session_state.symbol_input)
 
 def smart_parse(s):
     s = s.strip().upper()
@@ -52,17 +55,15 @@ def smart_parse(s):
     if s in us_stocks: return s
     return f"{s}-USD"
 
-symbol = smart_parse(user_symbol_input)
-
-# 更新 Session
-if symbol != st.session_state.chart_symbol:
-    st.session_state.chart_symbol = symbol
+# 顯示輸入框
+st.sidebar.text_input("🔍 快速搜尋 / 代碼輸入", value=st.session_state.chart_symbol, key="symbol_input", on_change=update_symbol)
+symbol = st.session_state.chart_symbol
 
 interval_ui = st.sidebar.radio("K 線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👁️ 視覺化開關")
-# 定義開關變數 (修復 NameError)
+# 定義開關變數，確保在主程式前就已經有值
 show_six = st.sidebar.checkbox("顯示 六道乾坤帶", value=True)
 show_zigzag = st.sidebar.checkbox("顯示 ZigZag 結構", value=True)
 show_fvg = st.sidebar.checkbox("顯示 FVG 缺口", value=True)
@@ -86,7 +87,6 @@ def get_data(symbol, period, interval):
     try:
         df = yf.Ticker(symbol).history(period=period, interval=interval)
         if df.empty: return None
-        # 4小時合成邏輯
         if interval == "1h" and "6mo" in period: 
             logic = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
             df = df.resample('4h').apply(logic).dropna()
@@ -128,7 +128,6 @@ def calculate_fvg(df):
         h, l, c, t = df['High'].values, df['Low'].values, df['Close'].values, df.index
         start = max(2, len(df)-300)
         for i in range(start, len(df)):
-            # 修復 KeyError 'start'
             if l[i] > h[i-2] and c[i-1] > h[i-2]: 
                 bull.append({'start': t[i-2], 'top': l[i], 'bottom': h[i-2], 'active': True})
             if h[i] < l[i-2] and c[i-1] < l[i-2]: 
@@ -198,61 +197,7 @@ def generate_ai_report(symbol, price, score, struct, six, fvg, div, rsi_txt, buy
     else: report += f"\\n🛒 **建議空點**: **{entry_zone}**\\n🎯 **止盈 TP1**: **{fmt_price(tp1)}**\\n🛡️ **止損 SL**: **{fmt_price(sell_sl)}**"
     return report
 
-# --- 7. 開倉/加倉/平倉函數 ---
-def execute_order(symbol, trade_type, leverage, principal, price, tp, sl):
-    # 1. 檢查是否已有同方向倉位 (加倉邏輯)
-    existing_idx = -1
-    for i, p in enumerate(st.session_state.positions):
-        if p['symbol'] == symbol:
-            existing_idx = i
-            break
-    
-    direction_str = "Long" if "多" in trade_type else "Short"
-
-    if existing_idx != -1:
-        # 已有倉位，檢查方向
-        old_pos = st.session_state.positions[existing_idx]
-        if old_pos['type'] != direction_str:
-            st.error("⚠️ 方向不同，無法加倉！請先平倉反向部位。")
-            return
-        
-        # 加倉：計算新均價 (Weighted Average)
-        old_margin = old_pos['margin']
-        old_entry = old_pos['entry']
-        new_margin = principal
-        new_entry = price
-        
-        # 總價值 / 總幣數 = 均價
-        old_value = old_margin * old_pos['lev']
-        new_value = new_margin * leverage
-        total_coins = (old_value / old_entry) + (new_value / new_entry)
-        avg_entry = (old_value + new_value) / total_coins
-        
-        # 更新倉位
-        st.session_state.positions[existing_idx]['margin'] += new_margin
-        st.session_state.positions[existing_idx]['entry'] = avg_entry
-        st.session_state.positions[existing_idx]['tp'] = tp if tp > 0 else old_pos['tp'] # 更新 TP
-        st.session_state.positions[existing_idx]['sl'] = sl if sl > 0 else old_pos['sl'] # 更新 SL
-        
-        st.session_state.balance -= principal
-        st.success(f"➕ 加倉成功！新均價: {fmt_price(avg_entry)}")
-
-    else:
-        # 新開倉
-        new_pos = {
-            "symbol": symbol,
-            "type": direction_str,
-            "entry": price,
-            "lev": leverage,
-            "margin": principal,
-            "tp": tp,
-            "sl": sl,
-            "time": datetime.now().strftime('%m-%d %H:%M')
-        }
-        st.session_state.positions.append(new_pos)
-        st.session_state.balance -= principal
-        st.success("🚀 開倉成功！")
-
+# --- 7. 平倉函數 ---
 def close_position(pos_index, percentage=100, reason="手動平倉", exit_price=0):
     if pos_index >= len(st.session_state.positions): return
     pos = st.session_state.positions[pos_index]
@@ -350,12 +295,8 @@ if df is not None:
         trade_type = c1.selectbox("方向", ["🟢 做多 (Long)", "🔴 做空 (Short)"], key="new_side")
         leverage = c2.number_input("槓桿", 1, 125, 20, key="new_lev")
         
-        # 資金全開按鈕
-        col_bal1, col_bal2 = st.columns([3, 1])
-        max_bal = float(st.session_state.balance)
-        principal = col_bal1.number_input("本金 (U)", 10.0, max_bal, min(1000.0, max_bal), key="new_amt")
-        if col_bal2.button("All"):
-             principal = max_bal # 這裡只是變數，Streamlit refresh 後才會生效，需手動輸入或用 session_state 優化，這裡簡化
+        # 資金全開
+        principal = st.number_input("本金 (U)", 10.0, float(st.session_state.balance), 1000.0, key="new_amt")
         
         with st.expander("進階設定 (TP/SL)"):
             set_tp = st.number_input("止盈 TP", value=0.0, format="%.4f", key="new_tp")
@@ -365,7 +306,18 @@ if df is not None:
             if principal > st.session_state.balance:
                 st.error("餘額不足！")
             else:
-                execute_order(symbol, trade_type, leverage, principal, curr_price, set_tp, set_sl)
+                new_pos = {
+                    "symbol": symbol,
+                    "type": "Long" if "做多" in trade_type else "Short",
+                    "entry": curr_price,
+                    "lev": leverage,
+                    "margin": principal,
+                    "tp": set_tp,
+                    "sl": set_sl,
+                    "time": datetime.now().strftime('%m-%d %H:%M')
+                }
+                st.session_state.positions.append(new_pos)
+                st.session_state.balance -= principal
                 st.rerun()
 
         if st.session_state.history:
