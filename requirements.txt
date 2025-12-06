@@ -5,3 +5,4 @@ numpy
 plotly
 pandas_ta
 scipy
+streamlit-autorefresh
