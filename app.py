@@ -9,8 +9,8 @@ import json
 import os
 
 # --- Page setup ---
-st.set_page_config(page_title="全方位戰情室 AI (v99.0)", layout="wide", page_icon="🏦")
-st.markdown("### 🏦 全方位戰情室 AI (v99.0 永續備份版)")
+st.set_page_config(page_title="全方位戰情室 AI (v98.0)", layout="wide", page_icon="🏦")
+st.markdown("### 🏦 全方位戰情室 AI (v98.0 超級趨勢戰法版)")
 
 # --- [核心] NpEncoder ---
 class NpEncoder(json.JSONEncoder):
@@ -88,61 +88,9 @@ def get_locked_funds():
     for o in st.session_state.pending_orders: locked += float(o.get('margin', 0.0))
     return locked
 
-# --- Indicators ---
-def calculate_indicators(df):
-    if df is None or df.empty: return df
-    df = df.copy()
-    
-    # VWAP
-    df['Typical_Price'] = (df['High'] + df['Low'] + df['Close']) / 3
-    df['VP'] = df['Typical_Price'] * df['Volume']
-    df['Total_VP'] = df['VP'].cumsum()
-    df['Total_Vol'] = df['Volume'].cumsum()
-    df['VWAP'] = df['Total_VP'] / df['Total_Vol']
-    
-    # ADX
-    high_diff = df['High'].diff()
-    low_diff = -df['Low'].diff()
-    df['+DM'] = np.where((high_diff > low_diff) & (high_diff > 0), high_diff, 0.0)
-    df['-DM'] = np.where((low_diff > high_diff) & (low_diff > 0), low_diff, 0.0)
-    df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
-    df['ATR'] = df['TR'].rolling(14).mean()
-    df['+DI'] = 100 * (df['+DM'].ewm(alpha=1/14).mean() / df['ATR'])
-    df['-DI'] = 100 * (df['-DM'].ewm(alpha=1/14).mean() / df['ATR'])
-    df['DX'] = 100 * abs(df['+DI'] - df['-DI']) / (df['+DI'] + df['-DI'])
-    df['ADX'] = df['DX'].ewm(alpha=1/14).mean()
-
-    # SuperTrend Logic (ATR 9, 3.9)
-    df['EMA7'] = df['Close'].ewm(span=7).mean()
-    df['EMA20'] = df['Close'].ewm(span=20).mean()
-    df['EMA60'] = df['Close'].ewm(span=60).mean()
-    df['EMA200'] = df['Close'].ewm(span=200).mean()
-    df['EMA52'] = df['Close'].ewm(span=52).mean() # Trend Filter
-    
-    # Simple ST Logic for display (Full ST logic is complex, using simplified visualization here)
-    # For full strategy we use the function below
-    
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).fillna(0)
-    loss = (-delta.where(delta < 0, 0)).fillna(0)
-    rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    exp12 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp26 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp12 - exp26
-    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['Hist'] = df['MACD'] - df['Signal']
-    
-    df['MA20'] = df['Close'].rolling(20).mean()
-    df['STD20'] = df['Close'].rolling(20).std()
-    df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2)
-    df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
-    
-    return df
-
-# --- SuperTrend Calc ---
+# --- [核心] SuperTrend 計算函數 ---
 def calculate_supertrend(df, period=9, multiplier=3.9):
+    # ATR
     high_low = df['High'] - df['Low']
     high_close = np.abs(df['High'] - df['Close'].shift())
     low_close = np.abs(df['Low'] - df['Close'].shift())
@@ -150,31 +98,98 @@ def calculate_supertrend(df, period=9, multiplier=3.9):
     true_range = np.max(ranges, axis=1)
     atr = true_range.ewm(alpha=1/period).mean()
     
+    # Basic Bands
     hl2 = (df['High'] + df['Low']) / 2
     basic_upper = hl2 + (multiplier * atr)
     basic_lower = hl2 - (multiplier * atr)
     
-    final_upper = basic_upper.copy(); final_lower = basic_lower.copy()
-    supertrend = basic_upper.copy(); direction = np.ones(len(df))
+    # SuperTrend Logic
+    final_upper = basic_upper.copy()
+    final_lower = basic_lower.copy()
+    supertrend = basic_upper.copy() # Init
+    direction = np.ones(len(df)) # 1: Bull, -1: Bear
     
-    close = df['Close'].values; bu = basic_upper.values; bl = basic_lower.values
-    fu = final_upper.values; fl = final_lower.values; st_val = supertrend.values
+    # Loop for recursive logic (SuperTrend is path-dependent)
+    # 使用 numpy 加速運算
+    close = df['Close'].values
+    bu = basic_upper.values
+    bl = basic_lower.values
+    fu = final_upper.values
+    fl = final_lower.values
+    st_val = supertrend.values
     
     for i in range(1, len(df)):
-        if bu[i] < fu[i-1] or close[i-1] > fu[i-1]: fu[i] = bu[i]
-        else: fu[i] = fu[i-1]
-        
-        if bl[i] > fl[i-1] or close[i-1] < fl[i-1]: fl[i] = bl[i]
-        else: fl[i] = fl[i-1]
-        
-        if direction[i-1] == 1:
-            if close[i] <= fl[i]: direction[i] = -1; st_val[i] = fu[i]
-            else: direction[i] = 1; st_val[i] = fl[i]
+        # Final Upper Band
+        if bu[i] < fu[i-1] or close[i-1] > fu[i-1]:
+            fu[i] = bu[i]
         else:
-            if close[i] >= fu[i]: direction[i] = 1; st_val[i] = fl[i]
-            else: direction[i] = -1; st_val[i] = fu[i]
+            fu[i] = fu[i-1]
             
-    df['SuperTrend'] = st_val; df['ST_Direction'] = direction
+        # Final Lower Band
+        if bl[i] > fl[i-1] or close[i-1] < fl[i-1]:
+            fl[i] = bl[i]
+        else:
+            fl[i] = fl[i-1]
+            
+        # Direction & Value
+        if direction[i-1] == 1: # Was Bull
+            if close[i] <= fl[i]:
+                direction[i] = -1
+                st_val[i] = fu[i]
+            else:
+                direction[i] = 1
+                st_val[i] = fl[i]
+        else: # Was Bear
+            if close[i] >= fu[i]:
+                direction[i] = 1
+                st_val[i] = fl[i]
+            else:
+                direction[i] = -1
+                st_val[i] = fu[i]
+                
+    df['SuperTrend'] = st_val
+    df['ST_Direction'] = direction # 1=Green, -1=Red
+    return df
+
+# --- Indicators ---
+def calculate_indicators(df):
+    if df is None or df.empty: return df
+    df = df.copy()
+    
+    # 1. SuperTrend (9, 3.9) - 影片核心
+    df = calculate_supertrend(df, period=9, multiplier=3.9)
+    
+    # 2. Trend Filter A-V2 (EMA 52)
+    df['EMA52'] = df['Close'].ewm(span=52).mean()
+    
+    # 3. QQE MOD Proxy (RSI + MACD Momentum)
+    # 使用 RSI 判斷強弱，配合 MACD 判斷柱狀圖顏色
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).fillna(0)
+    loss = (-delta.where(delta < 0, 0)).fillna(0)
+    rs = gain.rolling(14).mean() / (loss.rolling(14).mean().replace(0, np.nan))
+    df['RSI'] = 100 - (100 / (1 + rs))
+    
+    # MACD
+    exp12 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp26 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp12 - exp26
+    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['Hist'] = df['MACD'] - df['Signal'] # 用來模擬 QQE 柱狀圖
+    
+    # Basic EMAs for reference
+    df['EMA20'] = df['Close'].ewm(span=20).mean()
+    
+    # BB for QQE concept
+    df['MA20'] = df['Close'].rolling(20).mean()
+    df['STD20'] = df['Close'].rolling(20).std()
+    df['BB_Upper'] = df['MA20'] + (df['STD20'] * 2)
+    df['BB_Lower'] = df['MA20'] - (df['STD20'] * 2)
+    
+    # ATR for TP/SL
+    df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
+    df['ATR'] = df['TR'].rolling(14).mean()
+    
     return df
 
 # --- Chart Data ---
@@ -191,29 +206,108 @@ def get_chart_data(symbol, interval_ui):
             agg = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
             df = df.resample('4h').agg(agg).dropna()
         df = calculate_indicators(df)
-        df = calculate_supertrend(df) # Add ST
         return df
     except: return None
 
-# --- AI Strategy ---
+# --- [新] 超級趨勢回測引擎 ---
+def run_backtest_supertrend(df, initial_capital=10000):
+    if df is None or len(df) < 100: return None
+    
+    capital = initial_capital
+    position = 0
+    entry_price = 0.0
+    equity_curve = []
+    trades = []
+    
+    for i in range(100, len(df)):
+        curr = df.iloc[i]
+        prev = df.iloc[i-1]
+        timestamp = df.index[i]
+        price = curr['Close']
+        
+        # 策略邏輯 (完全依照影片)
+        # 1. SuperTrend 方向
+        st_bull = curr['ST_Direction'] == 1
+        st_bear = curr['ST_Direction'] == -1
+        st_flip_up = (prev['ST_Direction'] == -1) and (curr['ST_Direction'] == 1)
+        st_flip_down = (prev['ST_Direction'] == 1) and (curr['ST_Direction'] == -1)
+        
+        # 2. 趨勢過濾 (A-V2 -> EMA52)
+        trend_bull = price > curr['EMA52']
+        trend_bear = price < curr['EMA52']
+        
+        # 3. 動能過濾 (QQE MOD -> RSI > 50 & MACD > 0)
+        # 模擬藍色柱狀圖: RSI 強勢區 (>50) 且 MACD 動能向上
+        qqe_bull = (curr['RSI'] > 50) and (curr['Hist'] > 0)
+        # 模擬紅色柱狀圖: RSI 弱勢區 (<50) 且 MACD 動能向下
+        qqe_bear = (curr['RSI'] < 50) and (curr['Hist'] < 0)
+        
+        # --- 訊號生成 ---
+        # 買入: ST翻綠(或已綠) + 價格>EMA52 + QQE藍
+        # 嚴格版: ST 剛翻綠時進場，或者在多頭趨勢中 QQE 轉強時進場
+        buy_signal = st_bull and trend_bull and qqe_bull
+        
+        # 賣出: ST翻紅(或已紅) + 價格<EMA52 + QQE紅
+        sell_signal = st_bear and trend_bear and qqe_bear
+        
+        # 出場條件: SuperTrend 反轉
+        exit_long = (position == 1) and st_bear # 多單持有中，ST 翻紅就跑
+        exit_short = (position == -1) and st_bull # 空單持有中，ST 翻綠就跑
+        
+        # 執行交易
+        if exit_long:
+            pnl = (price - entry_price) / entry_price * capital
+            capital += pnl
+            position = 0
+            trades.append({'time': timestamp, 'type': '🔴 ST翻紅平多', 'price': price, 'pnl': pnl, 'balance': capital})
+            
+        elif exit_short:
+            pnl = (entry_price - price) / entry_price * capital
+            capital += pnl
+            position = 0
+            trades.append({'time': timestamp, 'type': '🟢 ST翻綠平空', 'price': price, 'pnl': pnl, 'balance': capital})
+            
+        if position == 0:
+            if buy_signal:
+                position = 1
+                entry_price = price
+                trades.append({'time': timestamp, 'type': '🟢 做多 (ST+EMA+QQE)', 'price': price, 'balance': capital})
+            elif sell_signal:
+                position = -1
+                entry_price = price
+                trades.append({'time': timestamp, 'type': '🔴 做空 (ST+EMA+QQE)', 'price': price, 'balance': capital})
+        
+        curr_equity = capital
+        if position == 1: curr_equity += (price - entry_price) / entry_price * capital
+        elif position == -1: curr_equity += (entry_price - price) / entry_price * capital
+        equity_curve.append({'time': timestamp, 'equity': curr_equity})
+        
+    return pd.DataFrame(equity_curve), pd.DataFrame(trades)
+
+# --- AI Strategy (Live) ---
 @st.cache_data(ttl=60)
 def get_supertrend_strategy(symbol, current_interval_ui):
     df = get_chart_data(symbol, current_interval_ui)
     if df is None or len(df) < 50: return None
     last = df.iloc[-1]
     
+    # 策略信號判讀
     st_dir = "多頭 (綠)" if last['ST_Direction'] == 1 else "空頭 (紅)"
     ema_dir = "多頭 (價>EMA52)" if last['Close'] > last['EMA52'] else "空頭 (價<EMA52)"
     
+    # QQE 模擬狀態
     if last['RSI'] > 50 and last['Hist'] > 0: qqe_status = "🔵 藍柱 (多)"
     elif last['RSI'] < 50 and last['Hist'] < 0: qqe_status = "🔴 紅柱 (空)"
     else: qqe_status = "⚪ 灰色 (盤整)"
     
+    # 綜合建議
     score = 0
     if last['ST_Direction'] == 1: score += 1
     else: score -= 1
+    
     if last['Close'] > last['EMA52']: score += 1
     else: score -= 1
+    
     if "藍" in qqe_status: score += 1
     elif "紅" in qqe_status: score -= 1
     
@@ -233,13 +327,14 @@ def get_supertrend_strategy(symbol, current_interval_ui):
         direction = "偏空震盪"
         action_msg = "📉 趨勢偏空，但短線有支撐，等待反彈或 QQE 轉紅。"
 
+    # 止盈止損 (使用 ST 線)
     curr_price = last['Close']
     st_line = last['SuperTrend']
     
     if score > 0:
         entry = curr_price
-        sl = st_line
-        tp = entry + (entry - sl) * 2
+        sl = st_line # 止損直接設在 SuperTrend 線
+        tp = entry + (entry - sl) * 2 # 盈虧比 1:2
     else:
         entry = curr_price
         sl = st_line
@@ -251,7 +346,11 @@ def get_supertrend_strategy(symbol, current_interval_ui):
         "st_dir": st_dir,
         "ema_dir": ema_dir,
         "qqe_status": qqe_status,
-        "entry": entry, "tp": tp, "sl": sl, "df": df, "last_price": curr_price
+        "entry": entry,
+        "tp": tp,
+        "sl": sl,
+        "df": df,
+        "last_price": curr_price
     }
 
 # --- Callbacks ---
@@ -274,47 +373,84 @@ def jump_to_symbol(target_symbol):
     st.session_state.chart_symbol = target_symbol
     st.session_state.symbol_input = "" 
 
+# --- Dialogs ---
+@st.dialog("⚡ 倉位管理")
+def manage_position_dialog(i, pos, current_price):
+    st.markdown(f"**{pos.get('symbol','--')}**")
+    try:
+        entry = float(pos.get('entry', 0))
+        lev = float(pos.get('lev', 1))
+        margin = float(pos.get('margin', 0))
+        d = 1 if pos.get('type') == 'Long' else -1
+        u_pnl = margin * (((current_price - entry) / entry) * lev * d)
+        roe_pct = (u_pnl / margin) * 100 if margin > 0 else 0.0
+        color = "green" if u_pnl >= 0 else "red"
+        st.markdown(f"未結盈虧: <span style='color:{color}; font-weight:bold'>${u_pnl:+.2f} ({roe_pct:+.2f}%)</span>", unsafe_allow_html=True)
+    except: pass
+
+    tab_close, tab_tpsl = st.tabs(["平倉", "止盈止損"])
+    with tab_close:
+        ratio = st.radio("平倉 %", [25,50,75,100], 3, horizontal=True, key=f"dr_{i}")
+        if st.button("確認平倉", key=f"btn_c_{i}", type="primary", use_container_width=True):
+            close_position(i, ratio, "手動", current_price)
+            st.rerun()
+    with tab_tpsl:
+        mode = st.radio("設定模式", ["價格", "ROE %"], horizontal=True, key=f"m_mode_{i}")
+        new_tp = float(pos.get('tp', 0)); new_sl = float(pos.get('sl', 0))
+        if mode == "價格":
+            c1, c2 = st.columns(2)
+            new_tp = c1.number_input("TP 價格", value=new_tp, key=f"ntp_p_{i}", format="%.6f")
+            new_sl = c2.number_input("SL 價格", value=new_sl, key=f"nsl_p_{i}", format="%.6f")
+        else:
+            c1, c2 = st.columns(2)
+            roe_tp = c1.number_input("止盈 %", value=0.0, key=f"ntp_r_{i}")
+            roe_sl = c2.number_input("止損 %", value=0.0, key=f"nsl_r_{i}")
+            d = 1 if pos.get('type')=='Long' else -1
+            if roe_tp > 0: new_tp = entry * (1 + (roe_tp / 100.0)/lev * d)
+            if roe_sl > 0: new_sl = entry * (1 - (roe_sl / 100.0)/lev * d)
+        
+        if st.button("更新設定", key=f"btn_u_{i}", use_container_width=True):
+            st.session_state.positions[i]['tp'] = new_tp
+            st.session_state.positions[i]['sl'] = new_sl
+            save_data()
+            st.toast("✅ 已更新")
+            st.rerun()
+
+def close_position(pos_index, percentage, reason, exit_price):
+    if pos_index >= len(st.session_state.positions): return
+    pos = st.session_state.positions[pos_index]
+    close_ratio = percentage / 100.0
+    margin = float(pos.get('margin', 0))
+    close_margin = margin * close_ratio 
+    d = 1 if pos.get('type') == 'Long' else -1
+    entry = float(pos.get('entry', 1))
+    lev = float(pos.get('lev', 1))
+    pnl = close_margin * (((exit_price - entry) / entry) * lev * d)
+    roe_pct = (pnl / close_margin) * 100 if close_margin > 0 else 0.0
+    st.session_state.balance += (close_margin + pnl)
+    st.session_state.history.append({
+        "時間": datetime.now().strftime("%m-%d %H:%M"),
+        "幣種": pos.get('symbol'),
+        "動作": f"平{percentage}%",
+        "價格": exit_price,
+        "盈虧": f"{pnl:+.2f} ({roe_pct:+.2f}%)",
+        "原因": reason
+    })
+    if percentage == 100: st.session_state.positions.pop(pos_index)
+    else: st.session_state.positions[pos_index]['margin'] -= close_margin
+    save_data()
+
+def cancel_order(idx):
+    if idx < len(st.session_state.pending_orders):
+        st.session_state.pending_orders.pop(idx)
+        save_data()
+        st.toast("已撤銷")
+
 # --- Sidebar ---
 st.sidebar.header("🎯 戰情室設定")
 market = st.sidebar.radio("市場", ["加密貨幣", "美股", "台股"], index=0)
 st.session_state.market = market
 interval_ui = st.sidebar.radio("⏱️ K線週期", ["15分鐘", "1小時", "4小時", "日線"], index=3)
-
-# [重點] 備份還原區
-st.sidebar.markdown("---")
-st.sidebar.subheader("💾 雲端備份/還原")
-st.sidebar.caption("關閉網頁前請先下載備份，下次開啟時上傳還原。")
-
-# 下載按鈕
-current_data = {
-    "balance": st.session_state.balance,
-    "positions": st.session_state.positions,
-    "pending_orders": st.session_state.pending_orders,
-    "history": st.session_state.history
-}
-json_str = json.dumps(current_data, cls=NpEncoder, indent=2)
-st.sidebar.download_button(
-    label="⬇️ 下載進度 (Backup)",
-    data=json_str,
-    file_name=f"trade_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-    mime="application/json"
-)
-
-# 上傳按鈕
-uploaded_file = st.sidebar.file_uploader("⬆️ 上傳還原 (Restore)", type=["json"])
-if uploaded_file is not None:
-    try:
-        data = json.load(uploaded_file)
-        st.session_state.balance = float(data.get("balance", 10000.0))
-        st.session_state.positions = data.get("positions", [])
-        st.session_state.pending_orders = data.get("pending_orders", [])
-        st.session_state.history = data.get("history", [])
-        save_data() # 立即存檔
-        st.sidebar.success("✅ 還原成功！")
-        if st.sidebar.button("🔄 刷新頁面生效"):
-            st.rerun()
-    except Exception as e:
-        st.sidebar.error(f"❌ 檔案格式錯誤: {e}")
 
 if market == "加密貨幣":
     targets = ["BTC-USD 比特幣", "ETH-USD 以太坊", "SOL-USD 索拉納", "DOGE-USD 狗狗幣", "XRP-USD 瑞波幣", "BNB-USD 幣安幣", "DNX-USD Dynex"]
@@ -330,13 +466,13 @@ st.sidebar.selectbox("快速選擇", targets, key="quick_select", on_change=on_s
 symbol = st.session_state.chart_symbol
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🗑️ 重置所有數據"):
+if st.sidebar.button("🗑️ 重置數據"):
     if os.path.exists(DATA_FILE): os.remove(DATA_FILE)
     st.session_state.clear()
     st.rerun()
 
 # --- Main Logic ---
-with st.spinner(f"正在分析 {symbol} ..."):
+with st.spinner(f"正在分析 {symbol} 超級趨勢..."):
     ai_res = get_supertrend_strategy(symbol, interval_ui)
 
 if ai_res:
@@ -382,39 +518,180 @@ if ai_res:
 
     st.divider()
 
-    st.subheader("🧠 超級趨勢過濾系統")
+    # --- Dashboard ---
+    st.subheader("🧠 超級趨勢過濾系統 (SuperTrend + EMA52 + QQE)")
     col_k, col_s, col_a = st.columns([1, 1.5, 1.5])
     with col_k:
+        st.markdown("#### 🔑 關鍵指標")
         st.write(f"**SuperTrend:** {ai_res['st_dir']}")
         st.write(f"**趨勢過濾 (EMA52):** {ai_res['ema_dir']}")
         st.write(f"**QQE 動能:** {ai_res['qqe_status']}")
-    with col_s: st.info(ai_res['action_msg'])
+    with col_s:
+        st.markdown("#### 📢 戰情分析")
+        st.info(ai_res['action_msg'])
     with col_a:
         st.markdown(f"#### 🚀 建議點位 ({ai_res['direction']})")
         ac1, ac2, ac3 = st.columns(3)
         ac1.metric("建議入場", fmt_price(ai_res['entry']))
-        ac2.metric("ST 止損", fmt_price(ai_res['sl']), delta="SL", delta_color="inverse")
-        ac3.metric("目標止盈", fmt_price(ai_res['tp']), delta="TP")
+        ac2.metric("SuperTrend 止損", fmt_price(ai_res['sl']), delta="SL", delta_color="inverse")
+        ac3.metric("目標止盈 (1:2)", fmt_price(ai_res['tp']), delta="TP")
 
     st.divider()
 
+    # --- Chart ---
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
     fig.add_trace(go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], name='K線'), row=1, col=1)
     
+    # Plot Indicators
+    # SuperTrend Line
     st_color = ['green' if d==1 else 'red' for d in df_chart['ST_Direction']]
+    # 為了畫出漂亮的變色線，這裡簡化處理，直接畫點或分段線
     fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['SuperTrend'], mode='markers', marker=dict(color=st_color, size=2), name='SuperTrend'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA52'], line=dict(color='#E040FB', width=2), name='EMA52'), row=1, col=1)
     
+    # EMA 52 (紫色趨勢線)
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['EMA52'], line=dict(color='#E040FB', width=2), name='EMA52 (趨勢線)'), row=1, col=1)
+    
+    for pos in st.session_state.positions:
+        if pos['symbol'] == symbol:
+            fig.add_hline(y=pos['entry'], line_dash="dash", line_color="orange", annotation_text=f"持倉 {pos['type']}")
+    
+    # QQE Proxy (RSI Histogram)
     colors = ['#2962FF' if h > 0 else '#FF1744' for h in df_chart['Hist']]
-    fig.add_trace(go.Bar(x=df_chart.index, y=df_chart['Hist'], name='QQE 動能', marker_color=colors), row=2, col=1)
+    fig.add_trace(go.Bar(x=df_chart.index, y=df_chart['Hist'], name='QQE 動能 (MACD)', marker_color=colors), row=2, col=1)
     
-    fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan', title_text=f"{symbol} - {interval_ui}")
+    fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), dragmode='pan', title_text=f"{symbol} - {interval_ui} (SuperTrend Strategy)")
     fig.update_xaxes(rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Trading Area (Same as v98, simplified for brevity) ---
-    # (此處保留原有的下單、訂單管理、歷史訂單邏輯，代碼太長省略部分，實際運作請包含 v98 的下單邏輯)
-    st.info("💡 提示：手機操作請記得在關閉前點擊側邊欄的「⬇️ 下載進度」，下次再「⬆️ 上傳還原」。")
+    # --- Trading ---
+    tab_trade, tab_orders, tab_history, tab_backtest = st.tabs(["⚡ 下單交易", "📋 訂單管理", "📜 歷史訂單", "📈 策略回測"])
+    
+    with tab_trade:
+        col_ctrl, col_info = st.columns([2, 1])
+        with col_ctrl:
+            c_t1, c_t2, c_t3 = st.columns(3)
+            trade_type = c_t1.selectbox("方向", ["做多 (Long)", "做空 (Short)"], index=0 if "多" in ai_res['direction'] else 1)
+            lev = c_t2.slider("槓桿", 1, 125, 20)
+            amt = c_t3.number_input("本金 (U)", min_value=10.0, value=float(st.session_state.trade_amt_box))
+            st.session_state.trade_amt_box = amt
+            
+            with st.expander("進階 (止盈止損)", expanded=True):
+                mode = st.radio("單位", ["價格", "ROE %"], horizontal=True)
+                rec_tp = ai_res['tp']; rec_sl = ai_res['sl']
+                if mode == "價格":
+                    t_tp = st.number_input("止盈價格", value=float(rec_tp), format="%.6f")
+                    t_sl = st.number_input("止損價格", value=float(rec_sl), format="%.6f")
+                else:
+                    roe_tp = st.number_input("止盈 ROE %", value=0.0)
+                    roe_sl = st.number_input("止損 ROE %", value=0.0)
+                    t_tp, t_sl = 0.0, 0.0
+                    d = 1 if "多" in trade_type else -1
+                    if roe_tp > 0: t_tp = curr_price * (1 + (roe_tp/100.0)/lev * d)
+                    if roe_sl > 0: t_sl = curr_price * (1 - (roe_sl/100.0)/lev * d)
+                t_entry = st.number_input("掛單價格 (0=市價)", value=0.0, format="%.6f")
+
+            if st.button("🚀 下單 / 掛單", type="primary", use_container_width=True):
+                final_entry = curr_price if t_entry == 0 else t_entry
+                if mode == "ROE %":
+                    d = 1 if "多" in trade_type else -1
+                    if roe_tp > 0: t_tp = final_entry * (1 + (roe_tp/100.0)/lev * d)
+                    if roe_sl > 0: t_sl = final_entry * (1 - (roe_sl/100.0)/lev * d)
+
+                if amt > available: st.error(f"可用餘額不足！ (可用: ${available:.2f})")
+                else:
+                    new_pos = {
+                        "symbol": symbol, "type": "Long" if "多" in trade_type else "Short",
+                        "entry": final_entry, "lev": lev, "margin": amt, "tp": t_tp, "sl": t_sl,
+                        "time": datetime.now().strftime("%m-%d %H:%M")
+                    }
+                    if t_entry == 0:
+                        st.session_state.positions.append(new_pos)
+                        st.toast(f"✅ 市價成交！")
+                    else:
+                        st.session_state.pending_orders.append(new_pos)
+                        st.toast(f"⏳ 掛單提交！")
+                    save_data()
+                    st.rerun()
+        
+        with col_info:
+            st.info("☝️ 已自動填入 SuperTrend 止損建議")
+            st.caption("止損點位設在超級趨勢線上，當趨勢反轉時自動離場。")
+
+    with tab_orders:
+        st.subheader("🔥 持倉中")
+        if not st.session_state.positions: st.caption("無持倉")
+        else:
+            for i, pos in enumerate(st.session_state.positions):
+                p_sym = pos['symbol']
+                p_cur = get_current_price(p_sym)
+                if p_cur:
+                    d = 1 if pos['type']=='Long' else -1
+                    pnl = pos['margin'] * (((p_cur - pos['entry'])/pos['entry']) * pos['lev'] * d)
+                    roe_pct = (pnl / pos['margin']) * 100
+                    if roe_pct <= -100.0:
+                        close_position(i, 100, "💀 爆倉 (-100%)", p_cur)
+                        st.toast(f"⚠️ {p_sym} 已爆倉！保證金歸零")
+                        st.rerun()
+                    clr = "#00C853" if pnl >= 0 else "#FF3D00"
+                    c_btn, c_info, c_mng = st.columns([1.5, 3, 1])
+                    c_btn.button(f"📊 {p_sym}", key=f"nav_p_{i}", on_click=jump_to_symbol, args=(p_sym,))
+                    c_info.markdown(f"""
+                    <div style='font-size:14px'>
+                        <b>{pos['type']} x{pos['lev']}</b> <span style='color:#aaa'>| 本金 ${pos['margin']:.0f}</span><br>
+                        盈虧: <span style='color:{clr}; font-weight:bold'>${pnl:+.2f} ({roe_pct:+.2f}%)</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if c_mng.button("⚙️", key=f"mng_{i}"): manage_position_dialog(i, pos, p_cur)
+                    st.divider()
+
+        st.subheader("⏳ 掛單中")
+        if not st.session_state.pending_orders: st.caption("無掛單")
+        else:
+            for i, ord in enumerate(st.session_state.pending_orders):
+                o_sym = ord['symbol']
+                c_btn, c_info, c_cnl = st.columns([1.5, 3, 1])
+                c_btn.button(f"📊 {o_sym}", key=f"nav_o_{i}", on_click=jump_to_symbol, args=(o_sym,))
+                c_info.markdown(f"{ord['type']} x{ord['lev']} @ <b>{fmt_price(ord['entry'])}</b>", unsafe_allow_html=True)
+                if c_cnl.button("❌", key=f"cnl_{i}"): cancel_order(i); st.rerun()
+                st.divider()
+
+    with tab_history:
+        st.subheader("📜 歷史戰績")
+        if not st.session_state.history: st.info("暫無歷史紀錄")
+        else:
+            hist_df = pd.DataFrame(st.session_state.history)
+            hist_df = hist_df.iloc[::-1]
+            st.dataframe(hist_df, use_container_width=True, hide_index=True)
+
+    with tab_backtest:
+        st.subheader(f"📈 {symbol} 歷史回測 (SuperTrend 戰法)")
+        st.caption("策略：SuperTrend (9, 3.9) + EMA52 趨勢過濾 + QQE 動能確認")
+        if st.button("🚀 開始回測"):
+            with st.spinner("正在執行超級趨勢策略模擬..."):
+                eq_curve, trades_log = run_backtest_supertrend(df_chart, 10000)
+            if eq_curve is not None and not eq_curve.empty:
+                fig_bt = go.Figure()
+                fig_bt.add_trace(go.Scatter(x=eq_curve['time'], y=eq_curve['equity'], mode='lines', name='資金曲線', line=dict(color='#00C853')))
+                fig_bt.update_layout(template="plotly_dark", title="回測資金增長", height=400)
+                st.plotly_chart(fig_bt, use_container_width=True)
+                
+                initial = 10000
+                final = eq_curve['equity'].iloc[-1]
+                total_ret = (final - initial) / initial * 100
+                win_count = len(trades_log[trades_log['pnl'] > 0]) if not trades_log.empty and 'pnl' in trades_log else 0
+                total_trades = len(trades_log[trades_log['type'].str.contains('平')]) if not trades_log.empty else 0
+                win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
+                
+                m1, m2, m3 = st.columns(3)
+                m1.metric("期初本金", "$10,000")
+                m2.metric("期末淨值", f"${final:,.2f}", delta=f"{total_ret:+.2f}%")
+                m3.metric("勝率", f"{win_rate:.1f}%", f"共 {total_trades} 筆交易")
+                
+                if not trades_log.empty:
+                    st.write("交易明細：")
+                    st.dataframe(trades_log, use_container_width=True)
+            else:
+                st.warning("數據不足，無法回測")
 
 else:
     st.error(f"❌ 無法讀取 {symbol}，請確認代碼或網路連線。")
