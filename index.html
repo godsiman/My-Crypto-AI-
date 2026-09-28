@@ -3796,6 +3796,226 @@ const OFFICIAL_RECENT = [
 
   function identifyModeValue(){ return $("#identifyMode")?.value || "blade"; }
 
+  function loadVisualImage(src){
+    return new Promise((resolve,reject)=>{
+      if(!src){reject(new Error("no image"));return;}
+      const img=new Image();
+      if(/^https?:/i.test(src)){
+        img.crossOrigin="anonymous";
+        img.referrerPolicy="no-referrer";
+      }
+      img.onload=()=>resolve(img);
+      img.onerror=()=>reject(new Error("image load failed"));
+      img.src=src;
+    });
+  }
+
+  function normalizeVec(v){
+    const sum=v.reduce((a,b)=>a+b,0)||1;
+    return v.map(x=>x/sum);
+  }
+
+  function cosine(a,b){
+    let dot=0,aa=0,bb=0;
+    const n=Math.min(a.length,b.length);
+    for(let i=0;i<n;i++){dot+=a[i]*b[i];aa+=a[i]*a[i];bb+=b[i]*b[i];}
+    if(!aa||!bb) return 0;
+    return Math.max(0,Math.min(1,dot/Math.sqrt(aa*bb)));
+  }
+
+  function rgbToHsv(r,g,b){
+    r/=255;g/=255;b/=255;
+    const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
+    let h=0;
+    if(d){
+      if(mx===r) h=((g-b)/d)%6;
+      else if(mx===g) h=(b-r)/d+2;
+      else h=(r-g)/d+4;
+      h/=6;if(h<0)h+=1;
+    }
+    return [h,d/(mx||1),mx];
+  }
+
+  function circularBestCosine(a,b){
+    let best=0;
+    for(let shift=0;shift<b.length;shift++){
+      const shifted=b.map((_,i)=>b[(i+shift)%b.length]);
+      best=Math.max(best,cosine(a,shifted));
+    }
+    return best;
+  }
+
+  function extractVisualFeature(img,mode){
+    const size=88;
+    const c=document.createElement("canvas"); c.width=size;c.height=size;
+    const ctx=c.getContext("2d",{willReadFrequently:true});
+    const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+    const cropRatio=mode==="bit"?.92:.82;
+    const side=Math.min(w,h)*cropRatio;
+    const sx=(w-side)/2, sy=(h-side)/2;
+    ctx.clearRect(0,0,size,size);
+    ctx.drawImage(img,sx,sy,side,side,0,0,size,size);
+    const im=ctx.getImageData(0,0,size,size),d=im.data;
+
+    const hue=new Array(12).fill(0), sat=new Array(4).fill(0), val=new Array(4).fill(0);
+    const radial=new Array(15).fill(0), angular=new Array(12).fill(0), lumRadial=new Array(5).fill(0), lumCount=new Array(5).fill(0);
+    let used=0,meanR=0,meanG=0,meanB=0;
+
+    for(let y=0;y<size;y++){
+      for(let x=0;x<size;x++){
+        const dx=(x+0.5-size/2)/(size/2),dy=(y+0.5-size/2)/(size/2);
+        const rr=Math.sqrt(dx*dx+dy*dy);
+        const inShape=mode==="bit" ? (Math.abs(dx)<.56 && Math.abs(dy)<.96) : rr<.94;
+        if(!inShape) continue;
+        const i=(y*size+x)*4;
+        const a=d[i+3]; if(a<25) continue;
+        const r=d[i],g=d[i+1],b=d[i+2];
+        const [hh,ss,vv]=rgbToHsv(r,g,b);
+        // Ignore near-white official backgrounds while keeping silver/metal.
+        const nearWhite=vv>.965 && ss<.055;
+        if(nearWhite) continue;
+
+        const centerWeight=mode==="bit" ? 1 : Math.max(.24,1-rr*.56);
+        const colorWeight=centerWeight*(.35+.65*Math.sqrt(ss));
+        hue[Math.min(11,Math.floor(hh*12))]+=colorWeight;
+        sat[Math.min(3,Math.floor(ss*4))]+=centerWeight;
+        val[Math.min(3,Math.floor(vv*4))]+=centerWeight;
+
+        const ring=Math.min(4,Math.floor(rr*5));
+        radial[ring*3]+=r/255*centerWeight;
+        radial[ring*3+1]+=g/255*centerWeight;
+        radial[ring*3+2]+=b/255*centerWeight;
+        lumRadial[ring]+=vv*centerWeight;lumCount[ring]+=centerWeight;
+
+        const ang=(Math.atan2(dy,dx)+Math.PI)/(Math.PI*2);
+        angular[Math.min(11,Math.floor(ang*12))]+=centerWeight*(.3+.7*ss);
+
+        used+=centerWeight; meanR+=r*centerWeight;meanG+=g*centerWeight;meanB+=b*centerWeigight;
+      }
+    }
+    for(let ring=0;ring<5;ring++){
+      const n=lumCount[ring]||1;
+      radial[ring*3]/=n;radial[ring*3+1]/=n;radial[ring*3+2]/=n;
+      lumRadial[ring]/=n;
+    }
+    return {
+      hue:normalizeVec(uhoe),sat:normalizeVec(sat),val:normalizeVec(val),
+      radial,angular:normalizeVec(angular),lumRadial,
+      mean:[meanR/(used||1)/255,meanG/(used||1)/255,meanB/(used||1)/255],
+      used
+    };
+  }
+
+  function featureSimilarity(a,b,mode){
+    const hue=cosine(a.hue,b.hue);
+    const sat=cosine(a.sat,b.sat);
+    const val=cosine(a.val,b.val);
+    let radialDist=0;
+    for(let i=0;i<a.radial.length;i++) radialDist+=(a.radial[i]-b.radial[i])**2;
+    const radial=Math.max(0,1-Math.sqrt(radialDist/a.radial.length)*2.0);
+    let lumDist=0;
+    for(let i=0;i<a.lumRadial.length;i++) lumDist+=(a.lumRadial[i]-b.lumRadial[i])**2;
+    const lum=Math.max(0,1-Math.sqrt(lumDist/a.lumRadial.length)*1.8);
+    const angular=circularBestCosine(a.angular,b.angular);
+    const color=Math.max(0,Math.min(1,hue*.48+sat*.16+val*.10+radial*.26));
+    const shape=Math.max(0,Math.min(1,angular*.62+lum*.38));
+    const total=mode==="bit" ? color*.42+shape*.58 : color*.66+shape*.34;
+    return {total,color,shape};
+  }
+
+  const photoFeatureCache=new Map();
+  async function featureForUrl(url,mode){
+    const key=mode+"|"+url;
+    if(photoFeatureCache.has(key)) return photoFeatureCache.get(key);
+    const img=await loadVisualImage(url);
+    const f=extractVisualFeature(img,mode);
+    photoFeatureCache.set(key,f);
+    return f;
+  }
+
+  async function poolMap(items,limit,worker,onProgress){
+    const results=new Array(items.length);
+    let cursor=0,done=0;
+    async function run(){
+      while(true){
+        const i=cursor++; if(i>=items.length) return;
+        try{results[i]=await worker(items[i],i);}catch(e){results[i]=null;}
+        done++; if(onProgress) onProgress(done,items.length);
+      }
+    }
+    await Promise.all(Array.from({length:Math.min(limit,items.length)},run));
+    return results;
+  }
+
+  function referenceUrlsForEntry(entry,mode){
+    const urls=[];
+    if(mode==="blade" && entry.primary){
+      const pimg=findImage(entry.primary);
+      if(pimg) urls.push({url:pimg,label:"官方上蓋圖"});
+      if(entry.wholeImage && entry.wholeImage!==pimg) urls.push({url:entry.wholeImage,label:"官方整顆圖"});
+    }else if(entry.wholeImage){
+      urls.push({url:entry.wholeImage,label:"官方整顆圖"});
+    }
+    return urls;
+  }
+
+  function identifyHintBonus(entry,hint){
+    const h=norm(hint||"");
+    if(!h) return 0;
+    return identifyTextForEntry(entry).includes(h) ? .06 : 0;
+  }
+
+  async function visualMatchProducts(file,mode,hint,onProgress){
+    const userImg=await loadVisualImage(URL.createObjectURL(file));
+    const userFeature=extractVisualFeature(userImg,mode);
+    const entries=identifyProductEntries().filter(e=> mode!=="blade" || !!e.primary);
+
+    const scored=await poolMap(entries,6,async entry=>{
+      const refs=referenceUrlsForEntry(entry,mode);
+      let best=null;
+      for(const ref of refs){
+        try{
+          const feat=await featureForUrl(ref.url,mode);
+          const sim=featureSimilarity(userFeature,feat,mode);
+          if(!best || sim.total>best.sim.total) best={ref,sim};
+        }catch(e){}
+      }
+      if(!best) return null;
+      const adjusted=Math.min(1,best.sim.total+identifyHintBonus(entry,hint));
+      return {...entry,match:best,score:adjusted};
+    },onProgress);
+
+    return scored.filter(Boolean).sort((a,b)=>b.score-a.score);
+  }
+
+  async function visualMatchBits(file,hint,onProgress){
+    const userImg=await loadVisualImage(URL.createObjectURL(file));
+    const userFeature=extractVisualFeature(userImg,"bit");
+    let entries=identifyBitEntries();
+    const scored=await poolMap(entries,6,async entry=>{
+      if(!entry.image) return null;
+      const feat=await featureForUrl(entry.image,"bit");
+      const sim=featureSimilarity(userFeature,feat,"bit");
+      const h=norm(hint||"");
+      const bonus=h && norm([entry.code,entry.name,...entry.sources].join(" ")).includes(h) ? .06 : 0;
+      return {...entry,match:{ref:{url:entry.image,label:"官方 Bit 圖"},sim},score:Math.min(1,sim.total+bonus)};
+    },onProgress);
+    return scored.filter(Boolean).sort((a,b)=>b.score-a.score);
+  }
+
+  function pct(x){ return Math.round(Math.max(0,Math.min(1,x||0))*100); }
+
+  function partMiniHtml(p){
+    if(!p) return "";
+    const img=findImage(p);
+    return `<div class="identifyPartMini">
+      <div class="identifyPartMiniImg">${img?`<img src="${esc(img)}" alt="${esc(displayNameForPart(p))}">`:""}</div>
+      <b>${esc(displayNameForPart(p))}</b>
+      <small>${esc(LABELS[p.slot]||p.slot)}</small>
+    </div>`;
+  }
+
+
   function renderIdentifyGuide(){
     const mode=identifyModeValue();
     const info=IDENTIFY_GUIDES[mode] || IDENTIFY_GUIDES.blade;
