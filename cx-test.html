@@ -4460,9 +4460,9 @@ const OFFICIAL_RECENT = [
         box.innerHTML='<div class="identifyHintBox">官方圖載入失敗或沒有可比對候選。請換成白底、置中的照片再試一次。</div>';
         return;
       }
-      const cxSlot=identifyCxSlot(mode);
-      if(cxSlot){
-        const label=cxSlot==="lock"?"Lock Chip 紋章":cxSlot==="main"?"Main Blade 主刃":"Assist Blade 輔刃";
+      const cxResultSlot=identifyCxSlot(mode);
+      if(cxResultSlot){
+        const label=cxResultSlot==="lock"?"Lock Chip 紋章":cxResultSlot==="main"?"Main Blade 主刃":"Assist Blade 輔刃";
         box.innerHTML='<section class="mixDiagnosis"><div class="mixDiagnosisHead"><div><div class="eyebrow">CX PART CHECK</div><h3>'+label+'</h3><p>只跟同一類 CX 零件比，不拿完整陀螺或別種零件混著猜。</p></div></div><div class="mixSlots">'+mixedSlotHtml(label,top)+'</div></section>'+
           (best<.50?'<div class="identifyConfidenceNote">⚠️ 最高相似度偏低，建議把這個零件拆下來單獨、白底、正上方重拍。</div>':'');
       }else{
