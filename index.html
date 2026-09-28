@@ -233,6 +233,31 @@
       .lineBox p{font-size:10px}
     }
 
+    .partsGuide{margin:14px 0;border:1px solid var(--line);background:#0f141b;border-radius:16px;padding:13px}
+    .partsGuideHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+    .partsGuideHead strong{font-size:14px}.partsGuideHead span{font-size:10px;color:var(--muted)}
+    .partsGuideGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .partsGuideCard{border:1px solid var(--line);background:#0b1016;border-radius:14px;padding:12px;min-width:0}
+    .partsGuideTag{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:9px;font-weight:950;border:1px solid var(--line);margin-bottom:7px}
+    .partsGuideTag.bxux{background:rgba(111,184,255,.12);border-color:rgba(111,184,255,.3);color:#9eccff}
+    .partsGuideTag.cx{background:rgba(255,138,128,.12);border-color:rgba(255,138,128,.3);color:#ffb2aa}
+    .partsGuideCard h3{margin:0 0 8px;font-size:13px}.partsGuideCard p{margin:0;color:#a7b3c3;font-size:10px;line-height:1.55}
+    .explodeStack{display:grid;gap:6px;margin-top:10px}.explodeArrow{text-align:center;color:#6f7d8e;font-weight:900;font-size:16px;line-height:1}
+    .explodePiece{border:1px solid var(--line);border-radius:11px;padding:9px 10px;background:#121925}
+    .explodePiece b{display:block;font-size:11px;margin-bottom:2px}.explodePiece small{display:block;color:#95a2b2;font-size:9px;line-height:1.45}
+    .explodePiece.blade{background:linear-gradient(180deg,#162130,#111924)}
+    .explodePiece.ratchet{background:linear-gradient(180deg,#1f1b10,#15120c);border-color:rgba(255,208,90,.18)}
+    .explodePiece.bit{background:linear-gradient(180deg,#141b22,#0f141b);border-color:rgba(103,182,255,.18)}
+    .explodePiece.lock{background:linear-gradient(180deg,#191923,#12121a)}
+    .explodePiece.main{background:linear-gradient(180deg,#1a2230,#121924)}
+    .explodePiece.assist{background:linear-gradient(180deg,#1f1821,#161019)}
+    .partsGuideTip{margin-top:10px;border-top:1px solid var(--line);padding-top:9px;font-size:10px;color:#cfd7e2;line-height:1.6}
+    .ratchetExplain{margin-top:10px;border:1px solid var(--line);background:#0b1016;border-radius:14px;padding:12px}
+    .ratchetExplain h3{margin:0 0 8px;font-size:13px}.ratchetExplain ul{margin:0;padding-left:18px;color:#c8d1dc;font-size:10px;line-height:1.7}
+    .ratchetExplain li+li{margin-top:3px}
+    @media(max-width:700px){.partsGuideGrid{grid-template-columns:1fr}.partsGuideCard h3,.ratchetExplain h3{font-size:14px}}
+
+
 
     .stockPanel{margin-bottom:14px}
     .stockHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:15px 16px 10px}
@@ -696,7 +721,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V20.3</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -737,6 +762,49 @@
     <div class="lineGuideFoot">例：<b>CX-01</b> 是商品系列編號；<b>1-60</b> 是 Ratchet 零件代碼；<b>R / H / FB</b> 是 Bit 軸心代碼。三種不要混在一起看。</div>
   </section>
 
+  <section class="partsGuide" aria-label="新手零件爆炸圖">
+    <div class="partsGuideHead"><strong>新手零件爆炸圖</strong><span>BX / UX 通常看 3 件；CX 通常看 5 件。</span></div>
+    <div class="partsGuideGrid">
+      <div class="partsGuideCard">
+        <div class="partsGuideTag bxux">BX / UX</div><h3>完整結構（3 件）</h3>
+        <p>先把整顆理解成上蓋、Ratchet、Bit 三層。</p>
+        <div class="explodeStack">
+          <div class="explodePiece blade"><b>1｜上蓋 / Blade</b><small>最上面的大零件；蒼龍神劍、魔導神杖等名稱通常就是這一件。</small></div>
+          <div class="explodeArrow">↓</div>
+          <div class="explodePiece ratchet"><b>2｜Ratchet 齒輪</b><small>中間層，常見代碼 1-60、3-60、9-60。</small></div>
+          <div class="explodeArrow">↓</div>
+          <div class="explodePiece bit"><b>3｜Bit 軸心</b><small>最底下接觸競技盤，例如 F、H、B、FB。</small></div>
+        </div>
+        <div class="partsGuideTip"><b>新手口訣：</b>Blade → Ratchet → Bit。</div>
+      </div>
+      <div class="partsGuideCard">
+        <div class="partsGuideTag cx">CX</div><h3>可拆上蓋結構（5 件）</h3>
+        <p>CX 上蓋能再拆，所以混裝核對要看得更細。</p>
+        <div class="explodeStack">
+          <div class="explodePiece lock"><b>1｜Lock Chip 紋章</b><small>最中央圖案件，可先理解成 CX 的身分牌。</small></div>
+          <div class="explodeArrow">↓</div>
+          <div class="explodePiece main"><b>2｜Main Blade 主刃</b><small>主要刀刃，決定大部分外形與碰撞感。</small></div>
+          <div class="explodeArrow">↓</div>
+          <div class="explodePiece assist"><b>3｜Assist Blade 輔刃</b><small>輔助外圈，影響造型、厚度與接觸方式。</small></div>
+          <div class="explodeArrow">↓</div>
+          <div class="explodePiece ratchet"><b>4｜Ratchet 齒輪</b><small>上蓋下方的中間層；少數一體式結構例外。</small></div>
+          <div class="explodeArrow">↓</div>
+          <div class="explodePiece bit"><b>5｜Bit 軸心</b><small>最底部，控制移動方式與穩定感。</small></div>
+        </div>
+        <div class="partsGuideTip"><b>新手建議：</b>拍 CX 上蓋先選「CX 上蓋｜自動拆 Lock / Main / Assist」。</div>
+      </div>
+    </div>
+    <div class="ratchetExplain">
+      <h3>Ratchet 齒輪是什麼？</h3>
+      <ul>
+        <li><b>位置：</b>Blade 上蓋與 Bit 軸心中間，就是整顆陀螺的中間層。</li>
+        <li><b>代碼：</b>1-60、3-60、5-70、9-60 都是 Ratchet。</li>
+        <li><b>粗記：</b>前面數字先看成外形／刃數差異；60 / 70 / 80 先理解成高度系列。</li>
+        <li><b>不要混淆：</b>CX-01 / UX-21 是商品編號；1-60 / 9-60 是 Ratchet；F / H / FB 是 Bit。</li>
+        <li><b>例外：</b>少數 UX Expand 會把 Ratchet 做進 Blade 裡，不能另外換獨立 Ratchet。</li>
+      </ul>
+    </div>
+  </section>
 
 
   <section class="panel releasePanel">
@@ -1012,9 +1080,14 @@
         <div class="identifyField">
           <label for="identifyMode">拍的是什麼？</label>
           <select id="identifyMode">
-            <option value="blade">上蓋 / Blade</option>
+            <option value="blade">上蓋 / Blade（BX・UX，新手最常用）</option>
+            <option value="cxauto">CX 上蓋｜新手推薦：自動拆 Lock / Main / Assist</option>
+            <option value="cxlock">CX｜Lock Chip 紋章（中央圖章）</option>
+            <option value="cxmain">CX｜Main Blade 主刃（主要刀刃）</option>
+            <option value="cxassist">CX｜Assist Blade 輔刃（輔助外圈）</option>
             <option value="full">整顆陀螺</option>
-            <option value="bit">軸心 / Bit</option>
+            <option value="ratchet">Ratchet 齒輪（例：1-60 / 3-60 / 9-60）</option>
+            <option value="bit">Bit 軸心（例：F / H / B / FB）</option>
           </select>
         </div>
         <div class="identifyField identifyGrow">
@@ -1022,6 +1095,8 @@
           <input id="identifyHint" type="text" placeholder="例如：CX、CX-06、蒼龍、魔導、UX-21、H、六角、藍色、左轉…">
         </div>
       </div>
+
+      <div class="browseHint"><b>不知道怎麼選？</b> BX / UX 拍上蓋就選「上蓋 / Blade」；CX 新手先選「CX 上蓋｜新手推薦」；中間齒輪選 Ratchet；最底部軸尖選 Bit。</div>
 
       <div class="identifyUploadRow">
         <label class="identifyUploadBox" for="identifyPhoto">
@@ -1083,6 +1158,27 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+<script>
+(function(){
+  function show(msg){
+    var el=document.getElementById("liveText");
+    if(el) el.textContent=msg;
+  }
+  window.addEventListener("error",function(e){
+    show("測試頁錯誤："+(e.message||"unknown"));
+  });
+  window.addEventListener("unhandledrejection",function(e){
+    var m=e.reason && (e.reason.message||String(e.reason));
+    show("測試頁錯誤："+(m||"promise"));
+  });
+  document.addEventListener("DOMContentLoaded",function(){
+    setTimeout(function(){
+      var el=document.getElementById("liveText");
+      if(el && el.textContent==="載入資料中") el.textContent="測試頁 JS 尚未啟動";
+    },2500);
+  });
+})();
+</script>
 <script>
 (() => {
   const DATA_BASE = "https://raw.githubusercontent.com/yujinyuz/beybrew/main/data/";
@@ -3873,6 +3969,12 @@ const OFFICIAL_RECENT = [
         "不要逆光"
       ]
     },
+    ratchet:{
+      title:"Ratchet 齒輪拍照建議",
+      desc:"Ratchet 最好拆下來單拍；正上方看外形／刃數，側面看高度。",
+      do:["拆下 Ratchet 單獨拍","正上方平拍，完整入鏡","背景單純、置中","能補側面照更好"],
+      dont:["不要裝在整顆裡硬猜","不要和 Blade / Bit 疊在一起","不要拍太斜","不要只拍局部"]
+    },
     bit:{
       title:"軸心 / Bit 拍照建議",
       desc:"Bit 最好至少拍 2 張：正面一張、側面一張。軸尖與輪廓越清楚越好。",
@@ -3946,6 +4048,14 @@ const OFFICIAL_RECENT = [
     return (state.parts.bit||[]).map(p=>({part:p,id:partId(p),code:p.en,name:p.zh||p.en,image:partImage(p),sources:(p.sources||[])}));
   }
 
+
+  function identifyCxSlot(mode){
+    return mode==="cxlock" ? "lock" : mode==="cxmain" ? "main" : mode==="cxassist" ? "assist" : "";
+  }
+
+  function identifyStandaloneSlot(mode){
+    return mode==="ratchet" ? "ratchet" : identifyCxSlot(mode);
+  }
 
   function identifyModeValue(){ return $("#identifyMode")?.value || "blade"; }
 
@@ -4327,13 +4437,21 @@ const OFFICIAL_RECENT = [
       if(hint) rows=sortBySearch(hint,rows,x=>[x.code,x.name,...(x.sources||[])].join(" "));
       else rows=rows.slice(0,12);
       return rows;
-    }else{
-      let rows=identifyProductEntries();
-      if(mode==="blade") rows=rows.filter(x=>!!x.primary);
-      if(hint) rows=sortBySearch(hint,rows,identifyTextForEntry);
+    }
+    const partSlot=identifyStandaloneSlot(mode);
+    if(partSlot){
+      let rows=(state.parts[partSlot]||[]).map(p=>({
+        part:p, code:p.en, name:p.zh||p.en, image:findImage(p), sources:p.sources||[]
+      }));
+      if(hint) rows=sortBySearch(hint,rows,x=>[x.code,x.name,...(x.sources||[])].join(" "));
       else rows=rows.slice(0,12);
       return rows;
     }
+    let rows=identifyProductEntries();
+    if(mode==="blade" || mode==="cxauto") rows=rows.filter(x=>!!x.primary);
+    if(hint) rows=sortBySearch(hint,rows,identifyTextForEntry);
+    else rows=rows.slice(0,12);
+    return rows;
   }
 
   function identifyResultCardProduct(entry,index){
@@ -4418,24 +4536,38 @@ const OFFICIAL_RECENT = [
     };
 
     try{
-      let rows, mix=null;
-      if(mode==="bit") rows=await visualMatchBits(file,hint,onProgress);
-      else {
+      let rows=[], mix=null;
+      const partSlot=identifyStandaloneSlot(mode);
+      if(mode==="bit"){
+        rows=await visualMatchBits(file,hint,onProgress);
+      }else if(partSlot){
+        const userImg=await loadVisualImage(URL.createObjectURL(file));
+        rows=await visualMatchPartSlot(userImg,partSlot,hint);
+      }else if(mode==="cxauto"){
+        const results=await Promise.all([visualMatchProducts(file,"blade",hint,onProgress),analyzeMixedCx(file,hint)]);
+        rows=results[0]; mix=results[1];
+      }else{
         const results=await Promise.all([visualMatchProducts(file,mode,hint,onProgress),analyzeMixedCx(file,hint)]);
         rows=results[0]; mix=results[1];
       }
 
-      // Only show a short ranked list. If confidence is weak, say so instead of pretending.
       const top=rows.slice(0,6);
       const best=top[0]?.score||0;
-      $("#identifyResultIntro").textContent=`已完成實際影像比對。最高相似度 ${pct(best)}%；系統預設以可能混裝 / 拆件的思路輔助排序，且顏色不合的候選會被明顯降分。`;
-      if(!top.length){
+      $("#identifyResultIntro").textContent=`已完成實際影像比對。最高相似度 ${pct(best)}%；候選依照片相似度排序。`;
+      if(!top.length && !mix){
         box.innerHTML='<div class="identifyHintBox">官方圖載入失敗或沒有可比對候選。請換成白底、置中的照片再試一次。</div>';
         return;
       }
-      box.innerHTML=(mode!=="bit"?renderMixedDiagnosis(mix):"")+
-        (best<.50?'<div class="identifyConfidenceNote">⚠️ 這張照片的最高相似度偏低，我不會把第一名當成確定答案。建議改成白底、正上方、物件置中後重拍。</div>':"")+
-        top.map((row,i)=>mode==="bit" ? identifyResultCardBit(row,i) : identifyResultCardProduct(row,i)).join("");
+
+      if(partSlot){
+        const label=partSlot==="lock"?"Lock Chip 紋章":partSlot==="main"?"Main Blade 主刃":partSlot==="assist"?"Assist Blade 輔刃":"Ratchet 齒輪";
+        box.innerHTML='<section class="mixDiagnosis"><div class="mixDiagnosisHead"><div><div class="eyebrow">PART CHECK</div><h3>'+label+'</h3><p>只跟同一類零件比，不拿完整陀螺或其他零件混著猜。</p></div></div><div class="mixSlots">'+mixedSlotHtml(label,top)+'</div></section>'+
+          (best<.50?'<div class="identifyConfidenceNote">⚠️ 相似度偏低，建議把零件拆下來，白底、正上方重拍。</div>':'');
+      }else{
+        box.innerHTML=(mode!=="bit"?renderMixedDiagnosis(mix):"")+
+          (best<.50?'<div class="identifyConfidenceNote">⚠️ 這張照片的最高相似度偏低，建議白底、正上方、置中後重拍。</div>':"")+
+          top.map((row,i)=>mode==="bit" ? identifyResultCardBit(row,i) : identifyResultCardProduct(row,i)).join("");
+      }
 
       if(mode==="bit"){
         box.querySelectorAll("[data-bit-source]").forEach(btn=>{
@@ -4445,7 +4577,7 @@ const OFFICIAL_RECENT = [
             if(source && typeof openSourceProduct==="function") openSourceProduct(row.part,source);
           });
         });
-      }else{
+      }else if(!partSlot){
         box.querySelectorAll("[data-identify-load]").forEach(btn=>{
           btn.addEventListener("click",()=>top[Number(btn.dataset.identifyLoad)]?.load?.());
         });
