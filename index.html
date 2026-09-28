@@ -159,6 +159,13 @@
     .metaPct{font-size:10px;color:var(--muted);margin-bottom:8px}
     .metaApply{width:100%;border:0;border-radius:9px;background:#252f3b;color:white;padding:8px 6px;font-weight:850;font-size:10px}
     .metaFoot{margin-top:10px;color:#7f8a99;font-size:10px;line-height:1.5}
+    .metaSubSection{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+    .metaSubTitle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+    .metaSubTitle strong{font-size:14px}
+    .metaCountBadge{display:inline-flex;align-items:center;border:1px solid rgba(90,168,255,.35);background:rgba(90,168,255,.07);color:#a9d2ff;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:900}
+    .metaQuickActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+    .metaQuickActions button{border:1px solid var(--line);background:#151b24;color:#e8eef6;border-radius:9px;padding:8px 10px;font-size:9px;font-weight:900}
+    .metaEstimate{font-size:9px;color:#7ce5ba;margin-top:4px}
     .detailBtn{width:100%;margin-top:6px;padding:7px;border:1px solid var(--line);border-radius:9px;background:transparent;color:#bfc9d5;font-weight:800;font-size:10px}
     .partImg{cursor:zoom-in}
     .mainImgWrap.hasPart{cursor:zoom-in}
@@ -758,7 +765,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.3</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.4</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -3426,30 +3433,97 @@ const OFFICIAL_RECENT = [
     return (state.parts[slot]||[]).find(p=>String(p.en).toLowerCase()===String(key).toLowerCase() || String(p.key).toLowerCase()===String(key).toLowerCase()) || null;
   }
 
+  function findPartFlexible(slot,key){
+    const want=norm(key);
+    if(!want) return null;
+    const arr=state.parts[slot]||[];
+    let p=arr.find(x=>norm(x.en)===want || norm(x.key)===want || norm(x.zh)===want);
+    if(p) return p;
+    const starts=arr.filter(x=>norm(x.en).startsWith(want) || norm(x.key).startsWith(want) || norm(x.zh).startsWith(want));
+    if(starts.length===1) return starts[0];
+    const contains=arr.filter(x=>norm(x.en).includes(want) || norm(x.key).includes(want) || norm(x.zh).includes(want));
+    return contains.length===1 ? contains[0] : null;
+  }
 
+  function metaRowsWithFallback(){
+    const live=Array.isArray(state.liveMeta?.ordered) ? state.liveMeta.ordered : [];
+    const out=[...live];
+    const seen=new Set(live.map(r=>norm(r.name)));
+    for(const [key,meta] of Object.entries(META3M)){
+      if(seen.has(norm(key))) continue;
+      const p=findBladePartByMetaName(key);
+      out.push({
+        rank:null,
+        name:p?.en || key,
+        share:Number(meta.share||0),
+        builds:Array.isArray(meta.builds)?meta.builds:[],
+        fallback:true
+      });
+    }
+    return out;
+  }
+
+  function resolveCxMetaExtras(build,bladeSlot=""){
+    const resolved={};
+    const extras=Array.isArray(build?.extras)?build.extras:[];
+    for(const extra of extras){
+      for(const slot of ["lock","assist","over","metal","main"]){
+        if(slot===bladeSlot) continue;
+        if(resolved[slot]) continue;
+        const p=findPartFlexible(slot,extra);
+        if(p){ resolved[slot]=p; break; }
+      }
+    }
+    return resolved;
+  }
+
+  function applyCxMetaExtras(build,bladeSlot=""){
+    const resolved=resolveCxMetaExtras(build,bladeSlot);
+    for(const [slot,p] of Object.entries(resolved)){
+      if(p) state.selected[slot]=p;
+    }
+    return resolved;
+  }
 
   function rankedCompleteBuilds(limit=5){
-    const rows=state.liveMeta?.ordered || [];
-    const out=[];
-    for(const row of rows){
-      const build=(row.builds||[]).find(b=>b.bit && (b.ratchet || ["gloryvalkyrie","hellsnether"].includes(norm(row.name))));
-      if(!build) continue;
+    const candidates=[];
+    for(const row of metaRowsWithFallback()){
       const blade=findBladePartByMetaName(row.name);
       if(!blade) continue;
-      out.push({row,build,blade});
+      for(const build of (row.builds||[])){
+        if(!build?.bit) continue;
+        const key=norm(row.name);
+        const allowsNoRatchet=["gloryvalkyrie","hellsnether"].includes(key);
+        if(!build.ratchet && !allowsNoRatchet) continue;
+        const score=(Number(row.share)||0)*(Number(build.pct)||0)/100;
+        candidates.push({row,build,blade,score});
+      }
+    }
+    candidates.sort((a,b)=>b.score-a.score || (Number(b.row.share)||0)-(Number(a.row.share)||0) || (Number(b.build.pct)||0)-(Number(a.build.pct)||0));
+    const out=[],seen=new Set();
+    for(const item of candidates){
+      const sig=[norm(item.row.name),item.build.ratchet||"",item.build.bit||"",...(item.build.extras||[])].join("|");
+      if(seen.has(sig)) continue;
+      seen.add(sig);
+      out.push(item);
       if(out.length>=limit) break;
     }
     return out;
   }
 
   function comboOwnedStatus(blade,build){
-    const ratchet=build.ratchet?findPart("ratchet",build.ratchet):null;
-    const bit=build.bit?findPart("bit",build.bit):null;
-    return [
-      {label:"上蓋",ok:owned(blade)},
-      ...(ratchet?[{label:build.ratchet,ok:owned(ratchet)}]:[]),
-      ...(bit?[{label:build.bit,ok:owned(bit)}]:[])
-    ];
+    const ratchet=build.ratchet?findPartFlexible("ratchet",build.ratchet):null;
+    const bit=build.bit?findPartFlexible("bit",build.bit):null;
+    const items=[{label:blade.slot==="blade"?"上蓋":LABELS[blade.slot]||"主刃",ok:owned(blade)}];
+    if(blade.slot!=="blade"){
+      const extras=resolveCxMetaExtras(build,blade.slot);
+      for(const slot of ["lock","assist","over","metal"]){
+        if(extras[slot]) items.push({label:extras[slot].zh||extras[slot].en,ok:owned(extras[slot])});
+      }
+    }
+    if(ratchet) items.push({label:build.ratchet,ok:owned(ratchet)});
+    if(bit) items.push({label:build.bit,ok:owned(bit)});
+    return items;
   }
 
   function applyRankedCompleteBuild(index){
@@ -3458,12 +3532,11 @@ const OFFICIAL_RECENT = [
     if(!item) return;
     const {row,build,blade}=item;
 
-    // Meta configuration is not a stock-box selection; start a free custom build.
     state.stockSelected=null;
     state.stockSetBeyId=null;
     state.stockOriginalSelection={};
-
     for(const s of Object.keys(state.selected)) state.selected[s]=null;
+
     if(blade.slot==="blade"){
       setMode("classic");
       state.selected.blade=blade;
@@ -3472,17 +3545,21 @@ const OFFICIAL_RECENT = [
       setMode("cx");
       state.selected[blade.slot]=blade;
       state.slot=blade.slot;
+      applyCxMetaExtras(build,blade.slot);
     }
 
-    if(build.ratchet) state.selected.ratchet=findPart("ratchet",build.ratchet);
-    if(build.bit) state.selected.bit=findPart("bit",build.bit);
+    if(build.ratchet){
+      const p=findPartFlexible("ratchet",build.ratchet);
+      if(p) state.selected.ratchet=p;
+    }
+    if(build.bit){
+      const p=findPartFlexible("bit",build.bit);
+      if(p) state.selected.bit=p;
+    }
 
     renderAll();
-    requestAnimationFrame(()=>{
-      document.querySelector(".hero")?.scrollIntoView({behavior:"smooth",block:"start"});
-    });
     const d=metaDisplayForName(row.name);
-    toast(`已套用 ${d.zh} ${localizedMetaBuildLabel(build)}`);
+    toast(`已套用 ${d.zh} ${localizedMetaBuildLabel(build)}；其他比賽配置仍保留在上方`);
   }
 
   function localizedMetaBuildLabel(build){
@@ -3496,20 +3573,16 @@ const OFFICIAL_RECENT = [
 
   function applyMetaBuild(build){
     if(build.ratchet){
-      const p=findPart("ratchet",build.ratchet);
+      const p=findPartFlexible("ratchet",build.ratchet);
       if(p) state.selected.ratchet=p;
     }
     if(build.bit){
-      const p=findPart("bit",build.bit);
+      const p=findPartFlexible("bit",build.bit);
       if(p) state.selected.bit=p;
     }
     if(state.mode==="cx" && Array.isArray(build.extras)){
-      for(const extra of build.extras){
-        for(const slot of ["lock","assist","metal","over"]){
-          const p=findPart(slot,extra);
-          if(p){ state.selected[slot]=p; break; }
-        }
-      }
+      const blade=currentMetaPart();
+      applyCxMetaExtras(build,blade?.slot||"");
     }
     renderAll();
     toast("已套用賽場配置 "+localizedMetaBuildLabel(build));
@@ -3520,66 +3593,69 @@ const OFFICIAL_RECENT = [
     const p=currentMetaPart();
     const usingLive=!!state.liveMeta?.map;
     const windowLabel=usingLive ? state.liveMeta.windowLabel : "內建近 3 個月快照";
+    const top=rankedCompleteBuilds(5);
 
-    if(!p){
-      const leaders=usingLive ? state.liveMeta.ordered.slice(0,5) : [];
-      if(leaders.length){
-        const top=rankedCompleteBuilds(5);
-        box.innerHTML=`<div class="metaLead"><strong>${esc(windowLabel)}｜熱門完整配置 TOP 5</strong><span class="metaShare">Live</span></div>
-          <div class="metaList">${top.map((item,i)=>{
-            const {row,build,blade}=item;
-            const d=metaDisplayForName(row.name);
-            const own=comboOwnedStatus(blade,build);
-            return `<div class="metaBuild">
-              <div class="metaRank">#${i+1} 熱門配置</div>
-              <div class="metaBuildName">${d.code?`<span class="metaProductTag">${esc(d.code)}</span> `:""}${esc(d.zh)}</div>
-              <div class="metaBuildCode">${esc(d.en)} · 上蓋排名 #${row.rank}</div>
-              <div class="metaBuildName" style="margin-top:7px">${esc(localizedMetaBuildLabel(build))}</div>
-              <div class="metaPct">上蓋出現在 ${row.share}% 頒獎台 deck · 此配法占該上蓋 ${build.pct}%</div>
-              <div class="metaOwnedLine">${own.map(x=>`<span class="${x.ok?"have":"miss"}">${x.ok?"✓":"○"} ${esc(x.label)}</span>`).join("")}</div>
-              <button class="metaApply" type="button" data-ranked-build="${i}">一鍵套用這組</button>
-            </div>`;
-          }).join("")}</div>
-          <div class="metaFoot">按「一鍵套用」後，完整 Blade + Ratchet + Bit 會直接進 CURRENT BUILD。接著你可以從下拉選單或底下零件庫換成自己手上有的零件，不會鎖死這套配置。</div>`;
-        box.querySelectorAll("[data-ranked-build]").forEach(btn=>btn.addEventListener("click",()=>applyRankedCompleteBuild(Number(btn.dataset.rankedBuild))));
+    const overallHtml = top.length
+      ? `<div class="metaLead"><strong>${esc(windowLabel)}｜熱門完整配置 TOP 5</strong><span class="metaShare">Live</span><span class="metaCountBadge">${top.length}/5 組</span></div>
+        <div class="metaList">${top.map((item,i)=>{
+          const {row,build,blade,score}=item;
+          const d=metaDisplayForName(row.name);
+          const own=comboOwnedStatus(blade,build);
+          return `<div class="metaBuild">
+            <div class="metaRank">#${i+1} 熱門配置</div>
+            <div class="metaBuildName">${d.code?`<span class="metaProductTag">${esc(d.code)}</span> `:""}${esc(d.zh)}</div>
+            <div class="metaBuildCode">${esc(d.en)}${row.rank?` · 上蓋排名 #${row.rank}`:""}</div>
+            <div class="metaBuildName" style="margin-top:7px">${esc(localizedMetaBuildLabel(build))}</div>
+            <div class="metaPct">上蓋 ${row.share}% · 此配法占該上蓋 ${build.pct}%</div>
+            <div class="metaEstimate">估算完整配置熱度：約 ${score.toFixed(2)}%</div>
+            <div class="metaOwnedLine">${own.map(x=>`<span class="${x.ok?"have":"miss"}">${x.ok?"✓":"○"} ${esc(x.label)}</span>`).join("")}</div>
+            <button class="metaApply" type="button" data-ranked-build="${i}">一鍵套用這組</button>
+          </div>`;
+        }).join("")}</div>
+        <div class="metaFoot">這裡固定保留「期間熱門完整配置 TOP 5」。套用其中一組後不會消失；如果想看目前配裝，按下面按鈕即可。</div>
+        <div class="metaQuickActions"><button type="button" data-meta-jump>查看 CURRENT BUILD ↓</button></div>`
+      : '<div class="metaEmpty">目前沒有足夠資料組出完整 TOP 5。按「更新賽場資料」後會再重新計算。</div>';
+
+    let selectedHtml="";
+    if(p){
+      const meta=metaForPart(p);
+      const code=primaryProductCode(p);
+      const displayTitle=`${code?code+" ":""}${p.zh||p.en}`;
+      if(meta){
+        selectedHtml=`<div class="metaSubSection">
+          <div class="metaSubTitle"><strong>此上蓋其他常見比賽配裝 TOP 5</strong><span class="metaCountBadge">${Math.min(5,(meta.builds||[]).length)} 組</span></div>
+          <div class="metaLead">
+            <div class="liveMetaTitle"><span class="liveRank">${meta.rank?"#"+meta.rank:""}</span><strong>${esc(displayTitle)}</strong><span class="metaEn">${esc(p.en)}</span></div>
+            <span class="metaShare">出現在 ${meta.share}% 的頒獎台 deck</span>
+          </div>
+          <div class="metaList">${(meta.builds||[]).slice(0,5).map((b,i)=>`<div class="metaBuild">
+            <div class="metaRank">#${i+1} 常見配置</div>
+            <div class="metaBuildName">${esc(localizedMetaBuildLabel(b))}</div>
+            ${b.sourceLabel?`<div class="metaBuildCode">Beycrate：${esc(b.sourceLabel)}</div>`:""}
+            <div class="metaPct">占此上蓋配法 ${b.pct}%</div>
+            <button class="metaApply" type="button" data-meta="${i}">套用這個配法</button>
+          </div>`).join("")}</div>
+          <div class="metaFoot">你可以連續試不同配法；套用後上面的期間 TOP 5 與這一區都會保留。</div>
+        </div>`;
       }else{
-        box.innerHTML='<div class="metaEmpty">按上面的「更新賽場資料」，就會顯示你所選期間的熱門完整配置 TOP 5；每一組都可以一鍵套用，再換成你自己的零件。</div>';
+        selectedHtml=`<div class="metaSubSection"><div class="metaSubTitle"><strong>此上蓋其他常見比賽配裝</strong></div><div class="metaEmpty">這顆在目前 ${esc(windowLabel)} 沒有足夠紀錄，不會用理論推算冒充比賽資料。</div></div>`;
       }
-      return;
     }
 
-    const meta=metaForPart(p);
-    const code=primaryProductCode(p);
-    const displayTitle=`${code?code+" ":""}${p.zh||p.en}`;
-
-    if(!meta){
-      box.innerHTML=`<div class="metaLead"><div class="liveMetaTitle"><strong>${esc(displayTitle)}</strong><span class="metaEn">${esc(p.en)}</span></div><span class="badge">本期無足夠資料</span></div>
-        <div class="metaEmpty">這顆在目前 ${esc(windowLabel)} 資料中沒有足夠的頒獎台紀錄。理論能力仍可看，但不會把推算冒充成比賽熱門配裝。</div>
-        <div class="metaFoot">${usingLive?`即時資料：${state.liveMeta.events??"—"} 場賽事・${state.liveMeta.podiumDecks??"—"} 副頒獎台 deck・更新 ${esc(state.liveMeta.updated||"—")}`:`資料快照：${META_INFO.events} 場 WBO 賽事・${META_INFO.podiumDecks} 副頒獎台 deck・更新 ${META_INFO.updated}`}</div>`;
-      return;
-    }
-
-    const rankText=meta.rank?`#${meta.rank}`:"";
-    box.innerHTML=`<div class="metaLead">
-        <div class="liveMetaTitle"><span class="liveRank">${esc(rankText)}</span><strong>${esc(displayTitle)}</strong><span class="metaEn">${esc(p.en)}</span></div>
-        <span class="metaShare">出現在 ${meta.share}% 的頒獎台 deck</span>
-      </div>
-      <div class="metaList">${(meta.builds||[]).slice(0,5).map((b,i)=>`<div class="metaBuild">
-        <div class="metaRank">#${i+1} 常見配置</div>
-        <div class="metaBuildName">${esc(localizedMetaBuildLabel(b))}</div>
-        ${b.sourceLabel?`<div class="metaBuildCode">Beycrate：${esc(b.sourceLabel)}</div>`:""}
-        <div class="metaPct">占此上蓋配法 ${b.pct}%</div>
-        <button class="metaApply" type="button" data-meta="${i}">一鍵套用</button>
-      </div>`).join("")}</div>
-      <div class="metaLegend">
-        <span>中文名稱：台灣版資料庫</span><span>商品編號：BX / UX / CX</span><span>Ratchet：原代碼</span><span>Bit：代碼＋台灣中文</span>
-      </div>
-      <div class="metaFoot">${usingLive
+    box.innerHTML=overallHtml+selectedHtml+
+      `<div class="metaFoot">${usingLive
         ? `${esc(state.liveMeta.windowLabel)}：${state.liveMeta.events??"—"} 場 WBO 賽事・${state.liveMeta.podiumDecks??"—"} 副頒獎台 deck。資料截至 ${esc(state.liveMeta.dataThrough||"—")}，Beycrate 更新 ${esc(state.liveMeta.updated||"—")}。`
         : `內建近 3 個月快照：${META_INFO.events} 場 WBO 賽事・${META_INFO.podiumDecks} 副頒獎台 deck，更新 ${META_INFO.updated}。`
       }這裡是「頒獎台常見度」，不是勝率。</div>`;
 
-    box.querySelectorAll("[data-meta]").forEach(btn=>btn.addEventListener("click",()=>applyMetaBuild(meta.builds[Number(btn.dataset.meta)])));
+    box.querySelectorAll("[data-ranked-build]").forEach(btn=>btn.addEventListener("click",()=>applyRankedCompleteBuild(Number(btn.dataset.rankedBuild))));
+    if(p){
+      const meta=metaForPart(p);
+      box.querySelectorAll("[data-meta]").forEach(btn=>btn.addEventListener("click",()=>applyMetaBuild(meta?.builds?.[Number(btn.dataset.meta)])));
+    }
+    box.querySelectorAll("[data-meta-jump]").forEach(btn=>btn.addEventListener("click",()=>{
+      document.querySelector(".hero")?.scrollIntoView({behavior:"smooth",block:"start"});
+    }));
   }
 
   function renderOwnedLibrary(){
