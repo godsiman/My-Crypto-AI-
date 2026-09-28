@@ -3758,7 +3758,8 @@ const OFFICIAL_RECENT = [
         type:"stock", id:"stock:"+b.id, load:()=>loadStockBey(b.id), addId:"stock:"+b.id,
         code:b.code, name:b.combo, subtitle:stockTypeLabel(b), image:wholeImageForStock(b),
         primary:b.parts?.blade || b.parts?.main || b.parts?.metal || b.parts?.lock || null,
-        parts:b.parts || {}
+        parts:b.parts || {},
+        wholeImage:wholeImageForStock(b)
       });
     }
     for(const sp of SPECIAL_PRODUCTS){
@@ -3767,7 +3768,8 @@ const OFFICIAL_RECENT = [
         type:"special", id:"special:"+sp.id, load:()=>loadSpecialProduct(sp.id), addId:"special:"+sp.id,
         code:sp.code, name:sp.title, subtitle:specialTypeLabel(sp), image:sp.image,
         primary:parts.blade || parts.main || parts.metal || parts.lock || null,
-        parts
+        parts,
+        wholeImage:sp.image
       });
     }
     for(const set of SPECIAL_SETS){
@@ -3777,7 +3779,8 @@ const OFFICIAL_RECENT = [
           type:"setbey", id:`setbey:${set.id}:${bey.id}`, load:()=>loadSetBey(set.id,bey.id), addId:`setbey:${set.id}:${bey.id}`,
           code:set.code, name:bey.name, subtitle:setBeyTypeLabel(bey), image:bey.image,
           primary:parts.blade || parts.main || parts.metal || parts.lock || null,
-          parts
+          parts,
+          wholeImage:bey.image
         });
       }
     }
@@ -3899,7 +3902,7 @@ const OFFICIAL_RECENT = [
       lumRadial[ring]/=n;
     }
     return {
-      hue:normalizeVec(uhoe),sat:normalizeVec(sat),val:normalizeVec(val),
+      hue:normalizeVec(hue),sat:normalizeVec(sat),val:normalizeVec(val),
       radial,angular:normalizeVec(angular),lumRadial,
       mean:[meanR/(used||1)/255,meanG/(used||1)/255,meanB/(used||1)/255],
       used
@@ -4216,7 +4219,7 @@ const OFFICIAL_RECENT = [
     $("#identifyPhoto").value="";
     updateIdentifyPreview(null);
     $("#identifyResults").innerHTML='<div class="garageEmpty">先選拍攝類型、上傳照片；若知道一點關鍵字，輸入後再按「開始核對」會更準。</div>';
-    $("#identifyResultIntro").textContent='這裡會列出候選。你可以直接載入完整整顆、加入「我的陀螺」，或拿整顆圖與零件圖自己核對。';
+    $("#identifyResultIntro").textContent='上傳照片後會真的做影像比對，候選會顯示「總相似度／顏色／輪廓」。你仍可用官方整顆圖與零件圖做最後人工確認。';
   }
 
 function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); renderGrid(); renderStats(); renderCombo(); renderBladeRecommendations(); renderMetaRecommendation(); renderShopping(); renderOwnedLibrary(); renderSaved(); }
@@ -4268,7 +4271,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
   $("#navBuilder").addEventListener("click",()=>setPage("builder"));
   $("#navGarage").addEventListener("click",()=>setPage("garage"));
   $("#navIdentify").addEventListener("click",()=>setPage("identify"));
-  $("#identifyMode").addEventListener("change",renderIdentifyGuide);
+  $("#identifyMode").addEventListener("change",()=>{renderIdentifyGuide();$("#identifyPreview").classList.toggle("bitMode",identifyModeValue()==="bit");});
   $("#identifyPhoto").addEventListener("change",e=>updateIdentifyPreview(e.target.files?.[0] || null));
   $("#identifySearch").addEventListener("click",performIdentifySearch);
   $("#identifyReset").addEventListener("click",resetIdentifyPage);
