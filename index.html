@@ -690,28 +690,13 @@
     .mixBottomNote{margin-top:8px;border-top:1px solid var(--line);padding-top:7px;color:#8b98a7;font-size:8px;line-height:1.5}
     @media(max-width:700px){.mixSlots{grid-template-columns:1fr}.mixPartHero{grid-template-columns:64px minmax(0,1fr)}}
 
-
-    .identifySecondShot{display:none;margin:0 16px 12px;padding:12px;border:1px solid var(--line);background:#0b1016;border-radius:12px}
-    .identifySecondShot.show{display:block}
-    .identifySecondTitle{font-size:10px;font-weight:950;margin-bottom:8px}
-    .identifySecondGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-    .identifySecondUpload{display:flex;min-height:120px;border:1px dashed #3b4755;border-radius:10px;align-items:center;justify-content:center;text-align:center;padding:10px;cursor:pointer}
-    .identifySecondUpload input{display:none}
-    .identifySecondPreview{min-height:120px;border:1px solid var(--line);border-radius:10px;background:#080d13;display:grid;place-items:center;overflow:hidden}
-    .identifySecondPreview img{max-width:100%;max-height:170px;object-fit:contain}
-    .mixActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
-    .mixActions button{border:0;border-radius:9px;padding:9px 11px;font-size:9px;font-weight:950;cursor:pointer}
-    .mixApplyBtn{background:#293544;color:#fff}
-    .mixStockBtn{background:#10251f;color:#7ce5ba;border:1px solid rgba(41,211,145,.28)!important}
-    .mixWhy{margin-top:8px;padding:7px 8px;border-radius:8px;background:#0b1118;border:1px solid var(--line);font-size:8px;line-height:1.5;color:#aab6c3}
-    @media(max-width:700px){.identifySecondGrid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V22.2</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V20</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1027,13 +1012,8 @@
         <div class="identifyField">
           <label for="identifyMode">拍的是什麼？</label>
           <select id="identifyMode">
-            <option value="blade">上蓋 / Blade（BX・UX・一般）</option>
-            <option value="cxauto">CX 上蓋（自動拆成 Lock / Main / Assist）</option>
-            <option value="cxlock">CX｜Lock Chip 紋章</option>
-            <option value="cxmain">CX｜Main Blade 主刃</option>
-            <option value="cxassist">CX｜Assist Blade 輔刃</option>
+            <option value="blade">上蓋 / Blade</option>
             <option value="full">整顆陀螺</option>
-            <option value="ratchet">Ratchet 齒輪</option>
             <option value="bit">軸心 / Bit</option>
           </select>
         </div>
@@ -1051,17 +1031,6 @@
         </label>
         <div id="identifyPreview" class="identifyPreview">
           <div class="identifyPreviewEmpty">上傳後會顯示預覽</div>
-        </div>
-      </div>
-
-      <div id="identifySecondShot" class="identifySecondShot">
-        <div class="identifySecondTitle">第二張照片（Ratchet / Bit 必拍）</div>
-        <div class="identifySecondGrid">
-          <label class="identifySecondUpload" for="identifyPhoto2">
-            <input id="identifyPhoto2" type="file" accept="image/*">
-            <span>＋ 補拍側面 / 底部<br><small>Ratchet 看高度；Bit 看軸尖與側面輪廓</small></span>
-          </label>
-          <div id="identifyPreview2" class="identifySecondPreview"><div class="identifyPreviewEmpty">第二張預覽</div></div>
         </div>
       </div>
 
@@ -1088,7 +1057,7 @@
         <div>
           <div class="eyebrow">VERIFY RESULT</div>
           <h2>候選清單</h2>
-          <p id="identifyResultIntro">V22 會先做 CX 拆件級判斷，再做官方商品比對；顏色錯配更嚴格，Ratchet / Bit 需第二張照片。</p>
+          <p id="identifyResultIntro">上傳照片後會先做「混裝拆件判斷」，再做完整官方商品比對；候選會顯示總相似度／顏色／輪廓。</p>
         </div>
       </div>
       <div id="identifyResults" class="identifyResults">
@@ -1638,51 +1607,20 @@ const OFFICIAL_RECENT = [
   ...SPECIAL_SETS
 ];
 
-  function safeStoreGet(key,fallback=null){
-    try{
-      const v=window.localStorage?.getItem(key);
-      return v===null || v===undefined ? fallback : v;
-    }catch(e){
-      console.warn("localStorage unavailable",e);
-      return fallback;
-    }
-  }
-
-  function safeStoreSet(key,value){
-    try{ window.localStorage?.setItem(key,value); return true; }
-    catch(e){ console.warn("localStorage write unavailable",e); return false; }
-  }
-
-  function safeJsonGet(key,fallback){
-    try{
-      const raw=safeStoreGet(key,null);
-      return raw==null ? fallback : JSON.parse(raw);
-    }catch(e){ return fallback; }
-  }
-
-  async function fetchWithTimeout(url,options={},timeoutMs=4000){
-    const ctl=new AbortController();
-    const timer=setTimeout(()=>ctl.abort(),timeoutMs);
-    try{
-      const opts={...options,signal:options.signal || ctl.signal};
-      return await fetch(url,opts);
-    }finally{ clearTimeout(timer); }
-  }
-
   const state = {
     mode:"classic", slot:"blade", raw:{}, parts:{}, images:{Blade:{},Ratchet:{},Bit:{},All:{}},
     selected:{blade:null,ratchet:null,bit:null,lock:null,main:null,assist:null,metal:null,over:null},
     stockBeys:[], stockSelected:null, stockSetBeyId:null, stockOriginalSelection:{}, releaseFilter:"all",
-    owned:new Set(safeJsonGet("beyx-owned",[])),
-    saved:safeJsonGet("beyx-saved",[]),
+    owned:new Set(JSON.parse(localStorage.getItem("beyx-owned") || "[]")),
+    saved:JSON.parse(localStorage.getItem("beyx-saved") || "[]"),
     liveMeta:null,
-    liveMetaWindow:safeStoreGet("beyx-meta-window","3m") || "3m",
+    liveMetaWindow:localStorage.getItem("beyx-meta-window") || "3m",
     liveRatchetUsage:{},
     liveBitUsage:{},
     metaRefreshing:false,
     recoTab:"global",
     recoShowAll:false,
-    garageItems:safeJsonGet("beyx-garage",[]),
+    garageItems:JSON.parse(localStorage.getItem("beyx-garage") || "[]"),
     garageResults:[]
   };
 
@@ -1803,7 +1741,7 @@ const OFFICIAL_RECENT = [
     let lastErr=null;
     for(const url of urls){
       try{
-        const res=await fetchWithTimeout(url,{cache:"no-store"},4000);
+        const res=await fetch(url,{cache:"no-store"});
         if(!res.ok) throw new Error(file+" "+res.status);
         return await res.json();
       }catch(e){ lastErr=e; }
@@ -1813,7 +1751,7 @@ const OFFICIAL_RECENT = [
 
   async function loadImageDir(dir){
     try{
-      const res=await fetchWithTimeout(IMG_API+dir,{headers:{"Accept":"application/vnd.github+json"}},4000);
+      const res=await fetch(IMG_API+dir,{headers:{"Accept":"application/vnd.github+json"}});
       if(!res.ok) throw new Error("img "+dir);
       const arr=await res.json();
       const map={};
@@ -1851,7 +1789,7 @@ const OFFICIAL_RECENT = [
   function owned(p){ return p && state.owned.has(partId(p)); }
 
   function saveOwned(){
-    safeStoreSet("beyx-owned",JSON.stringify([...state.owned]));
+    localStorage.setItem("beyx-owned",JSON.stringify([...state.owned]));
   }
 
   function imgTag(p, cls=""){
@@ -3056,7 +2994,7 @@ const OFFICIAL_RECENT = [
       setMode(state.mode); renderAll(); toast("已載入配裝");
     }));
     box.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{
-      state.saved.splice(Number(b.dataset.del),1); safeStoreSet("beyx-saved",JSON.stringify(state.saved)); renderSaved();
+      state.saved.splice(Number(b.dataset.del),1); localStorage.setItem("beyx-saved",JSON.stringify(state.saved)); renderSaved();
     }));
   }
 
@@ -3205,18 +3143,18 @@ const OFFICIAL_RECENT = [
   function saveLiveMeta(){
     if(!state.liveMeta) return;
     try{
-      safeStoreSet("beyx-live-meta",JSON.stringify({
+      localStorage.setItem("beyx-live-meta",JSON.stringify({
         meta:state.liveMeta,
         ratchets:state.liveRatchetUsage,
         bits:state.liveBitUsage
       }));
-      safeStoreSet("beyx-meta-window",state.liveMetaWindow);
+      localStorage.setItem("beyx-meta-window",state.liveMetaWindow);
     }catch(e){}
   }
 
   function loadCachedLiveMeta(){
     try{
-      const cached=safeJsonGet("beyx-live-meta",null);
+      const cached=JSON.parse(localStorage.getItem("beyx-live-meta")||"null");
       if(cached?.meta?.map){
         state.liveMeta=cached.meta;
         state.liveMetaWindow=cached.meta.window||state.liveMetaWindow;
@@ -3647,7 +3585,7 @@ const OFFICIAL_RECENT = [
 
   function garageEntryById(id){ return garageCatalogEntries().find(x=>x.id===id)||null; }
 
-  function garageSave(){ safeStoreSet("beyx-garage",JSON.stringify(state.garageItems)); }
+  function garageSave(){ localStorage.setItem("beyx-garage",JSON.stringify(state.garageItems)); }
 
   function garageAddSelected(){
     const sel=$("#garageBeySelect");
@@ -3881,51 +3819,51 @@ const OFFICIAL_RECENT = [
   const IDENTIFY_GUIDES = {
     blade:{
       title:"上蓋拍照建議",
-      desc:"適合 BX / UX 完整上蓋。白底、正上方、單一零件最好。",
-      do:["正上方平拍，整個上蓋完整入鏡","白底或淺色底，一次只拍一個零件","圖案正面朝上並置中","特殊配色要拍清楚"],
-      dont:["不要手拿著拍","不要太斜或強反光","不要跟其他零件混在一起","不要只拍局部"]
-    },
-    cxauto:{
-      title:"CX 上蓋拍照建議（自動拆件）",
-      desc:"同一張 CX 上蓋照片會拆成 Lock / Main / Assist 三區，各自在專屬候選池中比對。",
-      do:["只拍 CX 上蓋本體","正上方平拍並完整置中","背景乾淨","中心圖案與外圈都要清楚"],
-      dont:["不要手遮住外圈","不要只拍中心","不要拍太遠","不要多顆一起拍"]
-    },
-    cxlock:{
-      title:"CX｜Lock Chip 拍照建議",
-      desc:"只找 Lock Chip。若能拆件單拍中央紋章會最準。",
-      do:["中央紋章置中","白底正上方","避免反光","能拆件就單拍"],
-      dont:["不要拍到一半","不要太斜","不要被手遮住","不要背景太亂"]
-    },
-    cxmain:{
-      title:"CX｜Main Blade 拍照建議",
-      desc:"只找 Main Blade。主要看主刃輪廓與大面積配色。",
-      do:["主刃完整入鏡","正上方平拍","最好拆件單拍","保留外輪廓"],
-      dont:["不要只拍局部","不要嚴重傾斜","不要遮住外圈","不要多件重疊"]
-    },
-    cxassist:{
-      title:"CX｜Assist Blade 拍照建議",
-      desc:"只找 Assist Blade。Main / Assist 容易混淆，拆件後單拍最可靠。",
-      do:["最好單獨拍輔刃","正上方平拍","背景乾淨","特殊配色要清楚"],
-      dont:["不要只拍中心圖樣","不要角度太斜","不要多件重疊","不要失焦"]
+      desc:"最推薦白底、正上方、單一零件，盡量像官方零件圖的擺法。",
+      do:[
+        "正上方平拍，整個上蓋完整入鏡",
+        "白底或淺色底，一次只拍一個零件",
+        "圖案正面朝上，置中，留一點邊界",
+        "若有特殊配色，盡量拍清楚主色與外圈形狀"
+      ],
+      dont:[
+        "不要手拿著拍，避免手指遮到齒形",
+        "不要拍太斜、不要有陰影壓住圖案",
+        "不要跟其他零件混在一起",
+        "不要只拍局部"
+      ]
     },
     full:{
       title:"整顆陀螺拍照建議",
-      desc:"先拍正上方，再補 45 度斜拍，方便人工核對整體配置。",
-      do:["整顆置中","背景乾淨","保持清楚對焦","外圈完整入鏡"],
-      dont:["不要距離太遠","不要只拍側面","不要背景太複雜","不要逆光"]
-    },
-    ratchet:{
-      title:"Ratchet 齒輪拍照建議",
-      desc:"V22 需要兩張：正上方看刃數，側面看高度。",
-      do:["單獨拍 Ratchet","第一張正上方","第二張側面","白底或淺底"],
-      dont:["不要裝在整顆上硬猜","不要與其他零件重疊","不要失焦","不要只拍局部"]
+      desc:"先拍一張正上方，再補一張 45 度斜拍，最容易比整體造型與配色。",
+      do:[
+        "先拍正上方，整顆置中",
+        "再補一張 45 度斜角，方便看整體層次",
+        "背景乾淨，不要有其他陀螺入鏡",
+        "保持清楚對焦，外圈與軸心都要看得到"
+      ],
+      dont:[
+        "不要距離太遠，避免看不清 Blade 外型",
+        "不要只拍側面",
+        "不要在花紋太複雜的桌面拍",
+        "不要逆光"
+      ]
     },
     bit:{
       title:"軸心 / Bit 拍照建議",
-      desc:"V22 需要兩張：一張看底部 / 軸尖，一張看側面輪廓。",
-      do:["靠近拍清楚軸尖","第二張拍側面","背景單純","透明色可補光"],
-      dont:["不要模糊","不要只拍一小截","不要跟 Ratchet 疊在一起","不要遮住軸尖"]
+      desc:"Bit 最好至少拍 2 張：正面一張、側面一張。軸尖與輪廓越清楚越好。",
+      do:[
+        "靠近拍，軸尖與整體輪廓要清楚",
+        "最好補一張側面照",
+        "背景單純，讓軸身邊緣容易分辨",
+        "若是透明色或深色，補光一下更好"
+      ],
+      dont:[
+        "不要模糊或失焦",
+        "不要只拍一小截",
+        "不要跟 Ratchet 疊在一起",
+        "不要把手指擋住軸尖"
+      ]
     }
   };
 
@@ -3984,52 +3922,8 @@ const OFFICIAL_RECENT = [
     return (state.parts.bit||[]).map(p=>({part:p,id:partId(p),code:p.en,name:p.zh||p.en,image:partImage(p),sources:(p.sources||[])}));
   }
 
-  function partImage(p){ return findImage(p) || p?.image_override || ""; }
 
-  function identifyGenericPartEntries(slot){
-    return (state.parts[slot]||[]).map(p=>({
-      part:p,id:partId(p),code:p.en,name:p.zh||p.en,image:partImage(p),sources:(p.sources||[])
-    })).filter(x=>!!x.image || x.sources.length);
-  }
-
-  function identifyCxSlotFromMode(mode){
-    return mode==="cxlock"?"lock":mode==="cxmain"?"main":mode==="cxassist"?"assist":"";
-  }
-
-  function identifyModeLabel(mode){
-    return ({bit:"Bit",ratchet:"Ratchet",lock:"Lock Chip",main:"Main Blade",assist:"Assist Blade",cxlock:"Lock Chip",cxmain:"Main Blade",cxassist:"Assist Blade"}[mode]||"零件");
-  }
-
-  async function visualMatchGenericPartsMulti(files,slot,hint,onProgress,featureMode){
-    const mode=featureMode || (slot==="bit"?"bit":"blade");
-    const userFeatures=[];
-    for(const file of files){
-      const img=await loadVisualImage(URL.createObjectURL(file));
-      userFeatures.push(extractVisualFeature(img,mode));
-    }
-    const entries=identifyGenericPartEntries(slot);
-    const strictCx=["lock","main","assist"].includes(slot);
-    const scored=await poolMap(entries,6,async entry=>{
-      if(!entry.image) return null;
-      try{
-        const feat=await featureForUrl(entry.image,mode);
-        const sims=userFeatures.map(uf=>featureSimilarity(uf,feat,mode));
-        const avg={
-          total:sims.reduce((s,x)=>s+x.total,0)/sims.length,
-          color:sims.reduce((s,x)=>s+x.color,0)/sims.length,
-          shape:sims.reduce((s,x)=>s+x.shape,0)/sims.length
-        };
-        const hintScore=searchScore(hint||"",[entry.code,entry.name,...entry.sources].join(" "))||0;
-        let score=avg.total+hintScore*.18;
-        if(avg.color<.55) score-=strictCx?.16:.08;
-        if(avg.color<.40) score-=strictCx?.20:.12;
-        return {...entry,match:{ref:{url:entry.image,label:`官方${LABELS[slot]||slot}圖`},sim:avg},score:Math.max(0,Math.min(1,score))};
-      }catch(e){return null;}
-    },onProgress);
-    return scored.filter(Boolean).sort((a,b)=>b.score-a.score);
-  }
-
-    function identifyModeValue(){ return $("#identifyMode")?.value || "blade"; }
+  function identifyModeValue(){ return $("#identifyMode")?.value || "blade"; }
 
   function loadVisualImage(src){
     return new Promise((resolve,reject)=>{
@@ -4264,23 +4158,13 @@ const OFFICIAL_RECENT = [
   function componentSimilarity(userFeat,refFeat){
     const base=featureSimilarity(userFeat,refFeat,"blade");
     const meanDist=Math.sqrt(userFeat.mean.reduce((s,v,i)=>s+(v-refFeat.mean[i])**2,0)/3);
-    const mean=Math.max(0,1-meanDist*2.0);
-    const color=Math.max(0,Math.min(1,base.color*.80+mean*.20));
-    let total=base.shape*.22+color*.78;
-    if(color<.58) total*=.76;
-    if(color<.45) total*=.62;
-    if(color<.32) total*=.45;
-    return {total:Math.max(0,Math.min(1,total)),color,shape:base.shape};
-  }
-
-  function cxExclusiveParts(slot){
-    const all=(state.parts[slot]||[]).filter(p=>findImage(p));
-    const cx=all.filter(p=>(p.sources||[]).some(s=>/CX-/i.test(String(s))));
-    return cx.length?cx:all;
+    const mean=Math.max(0,1-meanDist*1.7);
+    const total=Math.max(0,Math.min(1,base.color*.66+mean*.18+base.shape*.16));
+    return {total:total,color:Math.max(0,Math.min(1,base.color*.82+mean*.18)),shape:base.shape};
   }
 
   async function visualMatchPartSlot(userImg,slot,hint){
-    const parts=cxExclusiveParts(slot);
+    const parts=(state.parts[slot]||[]).filter(p=>findImage(p));
     if(!parts.length) return [];
     const region=regionCanvasForComponent(userImg,slot);
     const userFeat=extractVisualFeature(region,"blade");
@@ -4290,11 +4174,7 @@ const OFFICIAL_RECENT = [
         const feat=await featureForUrl(url,"blade");
         const sim=componentSimilarity(userFeat,feat);
         const hintScore=searchScore(hint||"",partSearchText(p));
-        let score=sim.total+hintScore*.18;
-        if(sim.color<.55) score-=.10;
-        if(sim.color<.40) score-=.14;
-        score=Math.max(0,Math.min(1,score));
-        return {part:p,url,sim,score};
+        return {part:p,url:url,sim:sim,score:Math.min(1,sim.total+hintScore*.22)};
       }catch(e){return null;}
     });
     return scored.filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,3);
@@ -4319,44 +4199,15 @@ const OFFICIAL_RECENT = [
 
   async function analyzeMixedCx(file,hint){
     const userImg=await loadVisualImage(URL.createObjectURL(file));
-    const [lock,main,assist]=await Promise.all([
+    const values=await Promise.all([
       visualMatchPartSlot(userImg,"lock",hint),
       visualMatchPartSlot(userImg,"main",hint),
       visualMatchPartSlot(userImg,"assist",hint)
     ]);
-    const independent=[lock[0],main[0],assist[0]].filter(Boolean);
-    const independentCommon=commonSourceCodes(independent.map(x=>x.part));
-    const independentAvg=independent.reduce((s,x)=>s+(x.score||0),0)/Math.max(1,independent.length);
-
-    let bestStock=null;
-    for(const l of (lock.length?lock:[null])) for(const m of (main.length?main:[null])) for(const a of (assist.length?assist:[null])){
-      const rows=[l,m,a].filter(Boolean);
-      if(rows.length<2) continue;
-      const common=commonSourceCodes(rows.map(x=>x.part));
-      if(!common.length) continue;
-      const avg=rows.reduce((s,x)=>s+(x.score||0),0)/rows.length;
-      if(!bestStock || avg>bestStock.avg) bestStock={rows,common,avg};
-    }
-
-    const minConfidence=independent.length?Math.min(...independent.map(x=>x.score||0)):0;
-    let verdict="uncertain",reason="拆件候選信心不足，建議拆開單拍 Lock / Main / Assist。";
-    if(independent.length>=2 && independentAvg>=.55){
-      if(independentCommon.length){
-        verdict="stock";
-        reason=`三個最高候選有共同官方來源：${independentCommon.join("、")}。`;
-      }else if(bestStock && bestStock.avg>=independentAvg-.055){
-        verdict="stockPossible";
-        reason=`有一組官方同源候選只比各自最高候選低 ${Math.round((independentAvg-bestStock.avg)*100)} 分，可能是原廠同組。`;
-      }else{
-        verdict="mixed";
-        reason="Lock / Main / Assist 各自最像的零件沒有共同官方來源，較像混裝。";
-      }
-    }
-    if(minConfidence<.42){
-      verdict="uncertain";
-      reason="至少一個拆件候選相似度太低，先不要判定原廠或混裝。";
-    }
-    return {lock,main,assist,common:independentCommon,avg:independentAvg,bestStock,verdict,reason,likelyMixed:verdict==="mixed"};
+    const lock=values[0],main=values[1],assist=values[2];
+    const bestParts=[lock[0]&&lock[0].part,main[0]&&main[0].part,assist[0]&&assist[0].part].filter(Boolean);
+    const common=commonSourceCodes(bestParts);
+    return {lock:lock,main:main,assist:assist,common:common,likelyMixed:bestParts.length>=2&&common.length===0};
   }
 
   function mixedSlotHtml(title,rows){
@@ -4372,56 +4223,17 @@ const OFFICIAL_RECENT = [
 
   function renderMixedDiagnosis(mix){
     if(!mix) return "";
-    const map={mixed:["疑似混裝","mixed"],stock:["可能原廠同組","stock"],stockPossible:["可能原廠同組","stock"],uncertain:["目前無法確定","mixed"]};
-    const [verdict,cls]=map[mix.verdict]||map.uncertain;
-    const common=mix.common.length?`共同來源：${mix.common.join("、")}`:(mix.bestStock?.common?.length?`最接近的同源組：${mix.bestStock.common.join("、")}`:"沒有可靠共同來源");
-    const stockCode=(mix.common[0]||mix.bestStock?.common?.[0]||"");
-    return `<section class="mixDiagnosis">
-      <div class="mixDiagnosisHead">
-        <div><div class="eyebrow">CX PART-LEVEL CHECK</div><h3>CX 拆件級辨識：Lock / Main / Assist</h3><p>三個零件只在各自的 CX 候選池中比對；V22 對顏色錯配強力扣分。</p></div>
-        <span class="mixVerdict ${cls}">${verdict}</span>
-      </div>
-      <div class="mixSlots">
-        ${mixedSlotHtml("Lock Chip 紋章",mix.lock)}
-        ${mixedSlotHtml("Main Blade 主刃",mix.main)}
-        ${mixedSlotHtml("Assist Blade 輔刃",mix.assist)}
-      </div>
-      <div class="mixWhy"><b>為什麼這樣判：</b>${esc(mix.reason)}<br>${esc(common)}</div>
-      <div class="mixActions">
-        <button id="applyDetectedCx" class="mixApplyBtn" type="button">一鍵套用這個 CX 組合</button>
-        ${stockCode?`<button id="addDetectedStock" class="mixStockBtn" type="button" data-stock-code="${esc(stockCode)}">加入可能原廠來源</button>`:""}
-      </div>
-      <div class="mixBottomNote">Ratchet / Bit 從正上方看不完整；V22 會要求補拍第二張，不再單張硬猜。</div>
-    </section>`;
+    const verdict=mix.likelyMixed?"疑似混裝":"可能原廠同組";
+    const cls=mix.likelyMixed?"mixed":"stock";
+    const common=mix.common.length?"共同來源："+mix.common.join("、"):"目前三個上蓋零件沒有找到共同官方商品編號";
+    return '<section class="mixDiagnosis"><div class="mixDiagnosisHead"><div><div class="eyebrow">MIXED CX CHECK</div>'+
+      '<h3>先拆開找：Lock / Main / Assist</h3><p>這一區不先假設整顆是原廠配置，而是把照片不同區域分別跟官方零件圖比。</p></div>'+
+      '<span class="mixVerdict '+cls+'">'+verdict+'</span></div><div class="mixSlots">'+
+      mixedSlotHtml("Lock Chip 紋章",mix.lock)+mixedSlotHtml("Main Blade 主刃",mix.main)+mixedSlotHtml("Assist Blade 輔刃",mix.assist)+
+      '</div><div class="mixBottomNote">'+esc(common)+'。Ratchet / Bit 從正上方通常看不到，網站不會硬猜；要確認底部請再拍底面或側面。</div></section>';
   }
 
-  let lastIdentifyMix=null;
-
-  function applyDetectedCxMix(mix){
-    if(!mix) return;
-    state.mode="cx";
-    state.selected.lock=mix.lock?.[0]?.part||null;
-    state.selected.main=mix.main?.[0]?.part||null;
-    state.selected.assist=mix.assist?.[0]?.part||null;
-    state.slot="lock";
-    setPage("builder");
-    setMode("cx");
-    renderAll();
-    toast("已把辨識到的 CX 三件上蓋套用到配裝實驗室");
-    window.scrollTo({top:0,behavior:"smooth"});
-  }
-
-  function addDetectedStockByCode(code){
-    const matches=garageCatalogEntries().filter(x=>String(x.code||"").toUpperCase()===String(code||"").toUpperCase());
-    if(matches.length===1){ garageAddById(matches[0].id); return; }
-    const search=$("#garageBeySearch");
-    if(search) search.value=code;
-    setPage("garage");
-    renderGaragePicker();
-    toast(matches.length>1?"這個編號有多個版本，請確認後加入":"已把來源編號帶到我的陀螺搜尋");
-  }
-
-  function pct(  function pct(x){ return Math.round(Math.max(0,Math.min(1,x||0))*100); }
+  function pct(x){ return Math.round(Math.max(0,Math.min(1,x||0))*100); }
 
   function partMiniHtml(p){
     if(!p) return "";
@@ -4484,71 +4296,20 @@ const OFFICIAL_RECENT = [
     reader.readAsDataURL(file);
   }
 
-  let identifyPreviewDataUrl2="";
-  function updateIdentifyPreview2(file){
-    const box=$("#identifyPreview2");
-    if(!box) return;
-    if(!file){identifyPreviewDataUrl2="";box.innerHTML='<div class="identifyPreviewEmpty">第二張預覽</div>';return;}
-    const reader=new FileReader();
-    reader.onload=()=>{identifyPreviewDataUrl2=String(reader.result||"");box.innerHTML=`<img src="${identifyPreviewDataUrl2}" alt="第二張照片">`;};
-    reader.readAsDataURL(file);
-  }
-
-  function updateSecondShotVisibility(){
-    const mode=identifyModeValue();
-    const needs=mode==="ratchet"||mode==="bit";
-    $("#identifySecondShot")?.classList.toggle("show",needs);
-    if(needs){
-      const t=$("#identifySecondShot .identifySecondTitle");
-      if(t) t.textContent=mode==="ratchet"?"第二張照片（必拍：側面看高度）":"第二張照片（必拍：側面 / 軸尖）";
-    }
-  }
-
   function identifySearchEntries(mode,hintText){
-    const hint=strip(hintText||"");
+    const hint=strip(hintText || "");
     if(mode==="bit"){
       let rows=identifyBitEntries();
       if(hint) rows=sortBySearch(hint,rows,x=>[x.code,x.name,...(x.sources||[])].join(" "));
       else rows=rows.slice(0,12);
       return rows;
-    }
-    if(mode==="ratchet"){
-      let rows=identifyGenericPartEntries("ratchet");
-      if(hint) rows=sortBySearch(hint,rows,x=>[x.code,x.name,...(x.sources||[])].join(" "));
+    }else{
+      let rows=identifyProductEntries();
+      if(mode==="blade") rows=rows.filter(x=>!!x.primary);
+      if(hint) rows=sortBySearch(hint,rows,identifyTextForEntry);
       else rows=rows.slice(0,12);
       return rows;
     }
-    const cxSlot=identifyCxSlotFromMode(mode);
-    if(cxSlot){
-      let rows=identifyGenericPartEntries(cxSlot);
-      if(hint) rows=sortBySearch(hint,rows,x=>[x.code,x.name,...(x.sources||[])].join(" "));
-      else rows=rows.slice(0,12);
-      return rows;
-    }
-    let rows=identifyProductEntries();
-    if(mode==="blade"||mode==="cxauto") rows=rows.filter(x=>!!x.primary);
-    if(hint) rows=sortBySearch(hint,rows,identifyTextForEntry);
-    else rows=rows.slice(0,12);
-    return rows;
-  }
-
-  function identifyResultCardPart(entry,index,mode){
-    const p=entry.part||entry;
-    const sim=entry.match?.sim||{total:entry.score||0,color:entry.score||0,shape:0};
-    const total=pct(entry.score||sim.total),color=pct(sim.color),shape=pct(sim.shape);
-    const img=entry.image||entry.url||partImage(p)||"";
-    const label=identifyModeLabel(mode);
-    const sourceHtml=(entry.sources||p.sources||[]).slice(0,6).map(s=>`<span class="identifyTypeTag">${esc(s)}</span>`).join("")||'<span class="identifyTypeTag">尚無來源商品標記</span>';
-    return `<article class="identifyCard">
-      <div class="identifyTop"><span class="metaProductTag">${esc(entry.code||p.en||label)}</span><div class="identifyScore ${total<55?"low":""}"><strong>${total}%</strong><span class="scoreChip">顏色 ${color}%</span><span class="scoreChip">輪廓 ${shape}%</span></div></div>
-      <div class="identifyCompare">
-        <div class="identifyComparePane"><label>你拍的</label><div class="identifyCompareImg">${identifyPreviewDataUrl?`<img src="${identifyPreviewDataUrl}" alt="你的照片">`:""}</div></div>
-        <div class="identifyComparePane"><label>官方${esc(label)}圖</label><div class="identifyCompareImg">${img?`<img src="${esc(img)}" alt="${esc(entry.name||displayNameForPart(p))}">`:""}</div></div>
-      </div>
-      <div class="identifyName">${esc(entry.name||displayNameForPart(p))}</div>
-      <div class="identifySub">${esc((LABELS[p.slot]||label)+(entry.code?`：${entry.code}`:""))}</div>
-      <div class="identifySourceList">${sourceHtml}</div>
-    </article>`;
   }
 
   function identifyResultCardProduct(entry,index){
@@ -4603,37 +4364,27 @@ const OFFICIAL_RECENT = [
   async function performIdentifySearch(){
     const mode=identifyModeValue();
     const hint=$("#identifyHint").value.trim();
-    const file=$("#identifyPhoto").files?.[0]||null;
-    const file2=$("#identifyPhoto2")?.files?.[0]||null;
+    const file=$("#identifyPhoto").files?.[0] || null;
     const box=$("#identifyResults");
 
     if(!file){
       const rows=identifySearchEntries(mode,hint).slice(0,8);
-      $("#identifyResultIntro").textContent="目前沒有照片，所以先用提示字做智慧搜尋；支援編號開頭、完整編號、中英文模糊比對。";
+      $("#identifyResultIntro").textContent="目前沒有照片，所以先用你輸入的提示字做智慧搜尋；支援編號開頭、完整編號、中文 / 英文模糊比對。要做真正影像比對請先上傳照片。";
       if(!rows.length){
         box.innerHTML='<div class="identifyHintBox">請先上傳照片，或輸入商品編號／中文名／英文名再搜尋。</div>';
         return;
       }
-      box.innerHTML='<div class="identifyConfidenceNote">⚠️ 目前是文字搜尋，不是影像辨識。上傳照片後才會計算顏色與輪廓。</div>'+
-        rows.map(row=>{
-          const cxSlot=identifyCxSlotFromMode(mode);
-          if(mode==="bit") return `<article class="identifyCard"><div class="identifyName">${esc(row.name)}</div><div class="identifySub">${esc(row.code)}</div></article>`;
-          if(mode==="ratchet"||cxSlot) return `<article class="identifyCard"><div class="identifyTop"><span class="metaProductTag">${esc(row.code||"")}</span></div><div class="identifyImg">${row.image?`<img src="${esc(row.image)}" alt="${esc(row.name)}">`:""}</div><div class="identifyName">${esc(row.name)}</div><div class="identifySub">${esc((LABELS[row.part?.slot]||"")+((row.sources||[])[0]?`｜${(row.sources||[])[0]}`:""))}</div></article>`;
-          return `<article class="identifyCard"><div class="identifyTop"><span class="metaProductTag">${esc(row.code||"")}</span></div><div class="identifyImg">${row.image?`<img src="${esc(row.image)}" alt="${esc(row.name)}">`:""}</div><div class="identifyName">${esc(row.name)}</div></article>`;
-        }).join("");
-      return;
-    }
-
-    if((mode==="ratchet"||mode==="bit")&&!file2){
-      $("#identifyResultIntro").textContent=mode==="ratchet"?"Ratchet 需要兩張：正上方看刃數＋側面看高度。":"Bit 需要兩張：底部 / 軸尖＋側面輪廓。";
-      box.innerHTML='<div class="identifyHintBox">V22 不再用單張硬猜。請補拍第二張照片後再按「開始核對」。</div>';
-      $("#identifySecondShot")?.classList.add("show");
+      box.innerHTML='<div class="identifyConfidenceNote">⚠️ 目前是「文字搜尋」，不是影像辨識；但支援編號前綴、中文 / 英文與模糊比對。上傳照片後才會計算顏色與輪廓相似度。</div>'+
+        rows.map((row,i)=>mode==="bit"
+          ? `<article class="identifyCard"><div class="identifyName">${esc(row.name)}</div><div class="identifySub">${esc(row.code)}</div></article>`
+          : `<article class="identifyCard"><div class="identifyTop"><span class="metaProductTag">${esc(row.code||"")}</span></div><div class="identifyImg">${row.image?`<img src="${esc(row.image)}" alt="${esc(row.name)}">`:""}</div><div class="identifyName">${esc(row.name)}</div></article>`
+        ).join("");
       return;
     }
 
     const btn=$("#identifySearch");
     btn.disabled=true;btn.textContent="比對中…";
-    $("#identifyResultIntro").textContent="正在比對官方零件圖；CX 會分 Lock / Main / Assist，Ratchet / Bit 會合併兩張照片。";
+    $("#identifyResultIntro").textContent="正在讀取你的照片，並和官方候選圖做真正的顏色＋輪廓比對。第一次會較慢，因為要載入官方圖。";
     box.innerHTML='<div class="identifyProgress"><b>正在比對官方圖…</b><div class="identifyProgressBar"><i id="identifyProgressBar"></i></div><small id="identifyProgressText">準備中</small></div>';
 
     const onProgress=(done,total)=>{
@@ -4643,55 +4394,45 @@ const OFFICIAL_RECENT = [
     };
 
     try{
-      let rows=[],mix=null;
-      const cxSlot=identifyCxSlotFromMode(mode);
-      if(mode==="bit"){
-        rows=await visualMatchGenericPartsMulti([file,file2],"bit",hint,onProgress,"bit");
-      }else if(mode==="ratchet"){
-        rows=await visualMatchGenericPartsMulti([file,file2],"ratchet",hint,onProgress,"blade");
-      }else if(cxSlot){
-        rows=await visualMatchGenericPartsMulti([file],cxSlot,hint,onProgress,"blade");
-      }else if(mode==="cxauto"){
-        const results=await Promise.all([visualMatchProducts(file,"blade",hint,onProgress),analyzeMixedCx(file,hint)]);
-        rows=results[0];mix=results[1];
-      }else{
+      let rows, mix=null;
+      if(mode==="bit") rows=await visualMatchBits(file,hint,onProgress);
+      else {
         const results=await Promise.all([visualMatchProducts(file,mode,hint,onProgress),analyzeMixedCx(file,hint)]);
-        rows=results[0];mix=results[1];
+        rows=results[0]; mix=results[1];
       }
 
+      // Only show a short ranked list. If confidence is weak, say so instead of pretending.
       const top=rows.slice(0,6);
       const best=top[0]?.score||0;
-      const introLabel=cxSlot?`已完成 ${identifyModeLabel(mode)} 專屬候選池比對。`:mode==="ratchet"?"已完成 Ratchet 雙照片比對。":mode==="bit"?"已完成 Bit 雙照片比對。":"已完成影像比對。";
-      $("#identifyResultIntro").textContent=`${introLabel} 最高相似度 ${pct(best)}%；V22 對明顯不同顏色會強力降分。`;
-      if(!top.length&&!mix){
-        box.innerHTML='<div class="identifyHintBox">沒有可靠候選。請換成白底、置中的照片再試。</div>';
+      $("#identifyResultIntro").textContent=`已完成實際影像比對。最高相似度 ${pct(best)}%；系統預設以可能混裝 / 拆件的思路輔助排序，且顏色不合的候選會被明顯降分。`;
+      if(!top.length){
+        box.innerHTML='<div class="identifyHintBox">官方圖載入失敗或沒有可比對候選。請換成白底、置中的照片再試一次。</div>';
         return;
       }
-
-      lastIdentifyMix=mix;
-      box.innerHTML=(mode==="cxauto"||(mode!=="bit"&&mode!=="ratchet"&&!cxSlot)?renderMixedDiagnosis(mix):"")+
-        (best<.50?'<div class="identifyConfidenceNote">⚠️ 最高相似度偏低，不把第一名當成確定答案。建議重拍。</div>':"")+
-        top.map((row,i)=>mode==="bit"?identifyResultCardBit(row,i):(mode==="ratchet"||cxSlot)?identifyResultCardPart(row,i,cxSlot?mode:"ratchet"):identifyResultCardProduct(row,i)).join("");
-
-      $("#applyDetectedCx")?.addEventListener("click",()=>applyDetectedCxMix(lastIdentifyMix));
-      $("#addDetectedStock")?.addEventListener("click",e=>addDetectedStockByCode(e.currentTarget.dataset.stockCode));
+      box.innerHTML=(mode!=="bit"?renderMixedDiagnosis(mix):"")+
+        (best<.50?'<div class="identifyConfidenceNote">⚠️ 這張照片的最高相似度偏低，我不會把第一名當成確定答案。建議改成白底、正上方、物件置中後重拍。</div>':"")+
+        top.map((row,i)=>mode==="bit" ? identifyResultCardBit(row,i) : identifyResultCardProduct(row,i)).join("");
 
       if(mode==="bit"){
-        box.querySelectorAll("[data-bit-source]").forEach(b=>{
-          b.addEventListener("click",()=>{
-            const [rowIdx,srcIdx]=b.dataset.bitSource.split("|").map(Number);
+        box.querySelectorAll("[data-bit-source]").forEach(btn=>{
+          btn.addEventListener("click",()=>{
+            const [rowIdx,srcIdx]=btn.dataset.bitSource.split("|").map(Number);
             const row=top[rowIdx],source=row?.sources?.[srcIdx];
-            if(source&&typeof openSourceProduct==="function") openSourceProduct(row.part,source);
+            if(source && typeof openSourceProduct==="function") openSourceProduct(row.part,source);
           });
         });
-      }else if(mode!=="ratchet"&&!cxSlot){
-        box.querySelectorAll("[data-identify-load]").forEach(b=>b.addEventListener("click",()=>top[Number(b.dataset.identifyLoad)]?.load?.()));
-        box.querySelectorAll("[data-identify-add]").forEach(b=>b.addEventListener("click",()=>garageAddById(top[Number(b.dataset.identifyAdd)]?.addId)));
+      }else{
+        box.querySelectorAll("[data-identify-load]").forEach(btn=>{
+          btn.addEventListener("click",()=>top[Number(btn.dataset.identifyLoad)]?.load?.());
+        });
+        box.querySelectorAll("[data-identify-add]").forEach(btn=>{
+          btn.addEventListener("click",()=>garageAddById(top[Number(btn.dataset.identifyAdd)]?.addId));
+        });
       }
     }catch(err){
       console.error(err);
       $("#identifyResultIntro").textContent="影像比對沒有完成。";
-      box.innerHTML='<div class="identifyHintBox">這次分析失敗。請重拍白底、正上方照片後再試。</div>';
+      box.innerHTML='<div class="identifyHintBox">這次照片分析失敗。請重新整理後再試；若仍失敗，換一張白底、正上方照片。</div>';
     }finally{
       btn.disabled=false;btn.textContent="🔎 開始核對";
     }
@@ -4700,12 +4441,9 @@ const OFFICIAL_RECENT = [
   function resetIdentifyPage(){
     $("#identifyHint").value="";
     $("#identifyPhoto").value="";
-    if($("#identifyPhoto2")) $("#identifyPhoto2").value="";
     updateIdentifyPreview(null);
-    updateIdentifyPreview2(null);
-    updateSecondShotVisibility();
-    $("#identifyResults").innerHTML='<div class="garageEmpty">先選拍攝類型、上傳照片；CX 可用自動拆件或直接指定 Lock / Main / Assist。Ratchet / Bit 需要兩張照片。</div>';
-    $("#identifyResultIntro").textContent='V22：CX 拆件級辨識、嚴格顏色扣分、Ratchet / Bit 雙照片核對。';
+    $("#identifyResults").innerHTML='<div class="garageEmpty">先選拍攝類型、上傳照片；若知道一點關鍵字，輸入後再按「開始核對」會更準。</div>';
+    $("#identifyResultIntro").textContent='上傳照片後會真的做影像比對，候選會顯示「總相似度／顏色／輪廓」。你仍可用官方整顆圖與零件圖做最後人工確認。';
   }
 
 function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); renderGrid(); renderStats(); renderCombo(); renderBladeRecommendations(); renderMetaRecommendation(); renderShopping(); renderOwnedLibrary(); renderSaved(); }
@@ -4718,74 +4456,47 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
   }
 
   async function init(){
-    // 先讓網站立即可用；外部資料改成背景同步，避免 iPhone 卡在「載入資料中」。
-    let fallbackUsed=true;
+    let fallbackUsed=false;
+    const jobs=Object.entries(FILES).map(async([slot,file])=>{
+      try{
+        state.raw[slot]=await loadJson(file);
+        state.parts[slot]=groupParts(state.raw[slot],slot);
+        if(!state.parts[slot]?.length) throw new Error("empty "+slot);
+      }catch(err){
+        console.warn("Using fallback list for",slot,err);
+        const fb=fallbackParts(slot);
+        state.parts[slot]=fb;
+        fallbackUsed=fallbackUsed || fb.length>0;
+      }
+    });
+    const imgs=[
+      loadImageDir("Blade").then(x=>state.images.Blade=x).catch(()=>{}),
+      loadImageDir("Ratchet").then(x=>state.images.Ratchet=x).catch(()=>{}),
+      loadImageDir("Bit").then(x=>state.images.Bit=x).catch(()=>{}),
+      loadImageDir("All").then(x=>state.images.All=x).catch(()=>{})
+    ];
+    await Promise.allSettled([...jobs,...imgs]);
 
-    if(!state.parts.blade?.length) state.parts.blade=fallbackParts("blade");
-    if(!state.parts.ratchet?.length) state.parts.ratchet=fallbackParts("ratchet");
-    if(!state.parts.bit?.length) state.parts.bit=fallbackParts("bit");
+    // Absolute guarantee for the two catalogs the user must be able to browse.
+    if(!state.parts.ratchet?.length){ state.parts.ratchet=fallbackParts("ratchet"); fallbackUsed=true; }
+    if(!state.parts.bit?.length){ state.parts.bit=fallbackParts("bit"); fallbackUsed=true; }
+    if(!state.parts.blade?.length){ state.parts.blade=fallbackParts("blade"); fallbackUsed=true; }
+
     ensureSpecialParts();
     buildStockBeys();
-
-    const liveText=$("#liveText"), liveDot=$("#liveDot");
-    if(liveText) liveText.textContent="基本資料已載入・背景同步中";
-    if(liveDot) liveDot.className="dot ok";
-
+    $("#liveDot").className=fallbackUsed?"dot":"dot ok";
+    $("#liveText").textContent=fallbackUsed?"已載入（部分使用內建清單）":"最新資料已載入";
     renderAll();
     renderGarage();
     renderIdentifyGuide();
     resetIdentifyPage();
-    updateSecondShotVisibility();
-
-    let finished=false;
-    const jobs=Object.entries(FILES).map(async([slot,file])=>{
-      try{
-        state.raw[slot]=await loadJson(file);
-        const grouped=groupParts(state.raw[slot],slot);
-        if(grouped?.length) state.parts[slot]=grouped;
-      }catch(err){
-        console.warn("Using fallback list for",slot,err);
-      }
-    });
-    const imgs=[
-      loadImageDir("Blade").then(x=>{ if(x&&Object.keys(x).length) state.images.Blade=x; }).catch(()=>{}),
-      loadImageDir("Ratchet").then(x=>{ if(x&&Object.keys(x).length) state.images.Ratchet=x; }).catch(()=>{}),
-      loadImageDir("Bit").then(x=>{ if(x&&Object.keys(x).length) state.images.Bit=x; }).catch(()=>{}),
-      loadImageDir("All").then(x=>{ if(x&&Object.keys(x).length) state.images.All=x; }).catch(()=>{})
-    ];
-
-    Promise.allSettled([...jobs,...imgs]).then(()=>{
-      finished=true;
-      if(!state.parts.ratchet?.length) state.parts.ratchet=fallbackParts("ratchet");
-      if(!state.parts.bit?.length) state.parts.bit=fallbackParts("bit");
-      if(!state.parts.blade?.length) state.parts.blade=fallbackParts("blade");
-      ensureSpecialParts();
-      buildStockBeys();
-      if(liveDot) liveDot.className="dot ok";
-      if(liveText) liveText.textContent="最新資料已載入";
-      renderAll();
-      renderGarage();
-      renderIdentifyGuide();
-      updateSecondShotVisibility();
-    }).catch(err=>{
-      console.warn("background sync failed",err);
-      if(liveText) liveText.textContent="基本資料可用・外部資料稍後再試";
-    });
-
-    setTimeout(()=>{
-      if(!finished && liveText){
-        liveText.textContent="基本資料可用・背景同步稍慢";
-        if(liveDot) liveDot.className="dot ok";
-      }
-    },5500);
   }
 
   $("#navBuilder").addEventListener("click",()=>setPage("builder"));
   $("#navGarage").addEventListener("click",()=>setPage("garage"));
   $("#navIdentify").addEventListener("click",()=>setPage("identify"));
-  $("#identifyMode").addEventListener("change",()=>{renderIdentifyGuide();$("#identifyPreview").classList.toggle("bitMode",identifyModeValue()==="bit");updateSecondShotVisibility();});
+  $("#identifyMode").addEventListener("change",()=>{renderIdentifyGuide();$("#identifyPreview").classList.toggle("bitMode",identifyModeValue()==="bit");});
   $("#identifyPhoto").addEventListener("change",e=>updateIdentifyPreview(e.target.files?.[0] || null));
-  $("#identifyPhoto2")?.addEventListener("change",e=>updateIdentifyPreview2(e.target.files?.[0] || null));
   $("#identifySearch").addEventListener("click",performIdentifySearch);
   $("#identifyReset").addEventListener("click",resetIdentifyPage);
   $("#garageAddBtn").addEventListener("click",garageAddSelected);
@@ -4824,7 +4535,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
 
   $("#metaWindow").addEventListener("change",e=>{
     state.liveMetaWindow=e.target.value;
-    safeStoreSet("beyx-meta-window",state.liveMetaWindow);
+    localStorage.setItem("beyx-meta-window",state.liveMetaWindow);
     const info=metaWindowInfo(state.liveMetaWindow);
     $("#metaSourceLink").href=info.url;
     if(state.liveMeta?.window===state.liveMetaWindow){
@@ -4857,7 +4568,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
     const name=comboLabel(); if(!name){ toast("請先選擇零件"); return; }
     const keys={}; for(const s of activeSlots()) if(state.selected[s]) keys[s]=state.selected[s].key;
     state.saved.unshift({name,mode:state.mode,keys,date:new Date().toLocaleDateString("zh-TW")});
-    state.saved=state.saved.slice(0,30); safeStoreSet("beyx-saved",JSON.stringify(state.saved)); renderSaved(); toast("已儲存配裝");
+    state.saved=state.saved.slice(0,30); localStorage.setItem("beyx-saved",JSON.stringify(state.saved)); renderSaved(); toast("已儲存配裝");
   });
 
   const hadCachedMeta=loadCachedLiveMeta();
@@ -4869,7 +4580,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
     const m=state.liveMeta;
     setMetaStatus(`已載入上次更新：${m.windowLabel}・${m.events??"—"} 場賽事・${m.podiumDecks??"—"} 副頒獎台 deck・Beycrate 更新 ${m.updated||"—"}`,"ok");
   }
-  renderStats(); renderSaved(); init().catch(err=>{ console.error("init failed",err); const t=$("#liveText"); if(t) t.textContent="已載入基本功能（外部資料失敗）"; const d=$("#liveDot"); if(d) d.className="dot"; });
+  renderStats(); renderSaved(); init();
 })();
 </script>
 </body>
