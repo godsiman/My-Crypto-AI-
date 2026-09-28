@@ -605,13 +605,78 @@
       .identifyControls,.identifyUploadRow,.identifyGuideChecklist,.identifyGuideCards{grid-template-columns:1fr}
     }
 
+    .identifyPreview{position:relative;place-items:center!important;padding:8px}
+    .identifyPreview img{
+      display:block!important;
+      width:auto!important;height:auto!important;
+      max-width:100%!important;max-height:260px!important;
+      margin:auto!important;object-fit:contain!important;object-position:center center!important;
+    }
+    .identifyPreview::after{
+      content:"";
+      position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+      width:min(70%,230px);aspect-ratio:1;border:1px dashed rgba(255,255,255,.25);
+      border-radius:50%;pointer-events:none;
+    }
+    .identifyPreview.bitMode::after{width:42%;height:82%;aspect-ratio:auto;border-radius:24px}
+    .guideShot.goodExample{background:#f5f7f9}
+    .guideShot.clutterExample{
+      background:
+        linear-gradient(25deg,transparent 0 42%,rgba(255,192,92,.55) 43% 54%,transparent 55%),
+        radial-gradient(circle at 20% 25%,#8db8ff 0 12%,transparent 13%),
+        radial-gradient(circle at 78% 70%,#ff9a73 0 17%,transparent 18%),
+        repeating-linear-gradient(45deg,#242d38 0 12px,#171e27 12px 24px);
+    }
+    .guideShot.clutterExample .guideObjectCircle,
+    .guideShot.clutterExample .guideObjectWhole{left:63%;top:58%;transform:translate(-50%,-50%) scale(.72)}
+    .guideShot.clutterExample .guideObjectBit{left:66%;top:57%;transform:translate(-50%,-50%) scale(.72)}
+    .guideShot.angleExample{background:#151c25}
+    .guideShot.angleExample .guideObjectCircle,
+    .guideShot.angleExample .guideObjectWhole{
+      left:72%;top:56%;transform:translate(-50%,-50%) rotate(27deg) scale(.86,.58);
+    }
+    .guideShot.angleExample .guideObjectBit{
+      left:73%;top:56%;transform:translate(-50%,-50%) rotate(28deg) scale(.8);
+    }
+    .guideHand{position:absolute;left:-2%;bottom:-4%;width:58%;height:34%;background:#e0a27f;border-radius:55% 55% 0 0;opacity:.9}
+    .guideMulti1,.guideMulti2{position:absolute;width:48px;height:48px;border:7px solid #dce2e8;border-radius:50%;background:#7b52dc;opacity:.9}
+    .guideMulti1{left:9%;bottom:15%}.guideMulti2{right:8%;top:11%;background:#54b96e}
+    .identifyProgress{grid-column:1/-1;border:1px solid var(--line);background:#0b1016;border-radius:12px;padding:14px}
+    .identifyProgress b{display:block;font-size:11px}
+    .identifyProgressBar{height:8px;background:#161e28;border-radius:99px;overflow:hidden;margin-top:9px}
+    .identifyProgressBar i{display:block;height:100%;width:0;background:#7ce5ba;border-radius:99px;transition:width .2s}
+    .identifyProgress small{display:block;color:#8290a0;margin-top:7px;font-size:8px}
+    .identifyScore{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+    .identifyScore strong{font-size:12px;color:#7ce5ba}
+    .identifyScore.low strong{color:#ffd171}
+    .identifyScore verylow{color:#ff8f88}
+    .scoreChip{border:1px solid var(--line);border-radius:999px;padding:4px 6px;font-size:8px;color:#bfcbd7}
+    .identifyCompare{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+    .identifyComparePane{border:1px solid var(--line);background:#080d13;border-radius:10px;overflow:hidden}
+    .identifyComparePane label{display:block;padding:5px 7px;color:#8795a5;font-size:8px;font-weight:900}
+    .identifyCompareImg{height:140px;background:#f4f6f8;display:grid;place-items:center;overflow:hidden}
+    .identifyCompareImg img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;object-position:center center;margin:auto}
+    .identifyColorWarn{margin-top:7px;border:1px solid rgba(255,208,90,.28);background:rgba(255,208,90,.06);color:#ffd171;border-radius:8px;padding:6px 7px;font-size:8px;line-height:1.4}
+    .identifyColorGood{margin-top:7px;color:#7ce5ba;font-size:8px}
+    .identifyPartStrip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px}
+    .identifyPartMini{border:1px solid var(--line);background:#0a0f15;border-radius:8px;padding:5px;min-width:0}
+    .identifyPartMiniImg{height:54px;background:#f4f6f8;border-radius:6px;display:grid;place-items:center;overflow:hidden}
+    .identifyPartMiniImg img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+    .identifyPartMini b{display:block;margin-top:4px;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .identifyPartMini small{display:block;color:#7f8c9b;font-size:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .identifyConfidenceNote{grid-column:1/-1;border:1px solid rgba(255,208,90,.28);background:rgba(255,208,90,.05);color:#c9b879;border-radius:10px;padding:9px;font-size:9px;line-height:1.5}
+    @media(max-width:560px){
+      .identifyCompareImg{height:118px}
+      .identifyPartStrip{grid-template-columns:repeat(3,minmax(0,1fr))}
+    }
+
   </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室</h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V18</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -908,7 +973,7 @@
         <div>
           <div class="eyebrow">PHOTO CHECK / OFFICIAL VERIFY</div>
           <h2>拍照核對・官方商品對照</h2>
-          <p>先照「官方擺放拍法」拍，再上傳照片。這版先做成 <b>核對流程版</b>：你可以上傳照片、選拍攝類型、輸入一點提示字，網站就列出候選與官方整顆資料給你比對。</p>
+          <p>先照「官方擺放拍法」拍，再上傳照片。照片會在你的手機瀏覽器內做 <b>顏色＋輪廓分布的實際影像比對</b>，再列出最接近的官方候選；提示字只做輔助，不會再直接把 BX-01、BX-02…依序丟給你。</p>
         </div>
         <span class="garageCount">朋友也能用</span>
       </div>
@@ -962,7 +1027,7 @@
         <div>
           <div class="eyebrow">VERIFY RESULT</div>
           <h2>候選清單</h2>
-          <p id="identifyResultIntro">這裡會列出候選。你可以直接載入完整整顆、加入「我的陀螺」，或拿整顆圖與零件圖自己核對。</p>
+          <p id="identifyResultIntro">上傳照片後會真的做影像比對，候選會顯示「總相似度／顏色／輪廓」。你仍可用官方整顆圖與零件圖做最後人工確認。</p>
         </div>
       </div>
       <div id="identifyResults" class="identifyResults">
