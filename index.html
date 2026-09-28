@@ -592,6 +592,16 @@
     .identifyActionRow{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 16px}
     .identifyGuideHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 16px 0}
     .identifyGuideCards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px 16px 0}
+    .identifyGuideCards.guideExplodedLayout{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+    .identifyGuideChecklist.guideExplainGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .guideExplainCard{border:1px solid var(--line);background:#0b1016;border-radius:14px;padding:12px;min-width:0}
+    .guideExplainCard h4{margin:0 0 8px;font-size:11px}
+    .guideExplainCard ul{margin:0;padding-left:18px;color:#c8d1dc;font-size:9px;line-height:1.7}
+    .guideExplainCard li+li{margin-top:3px}
+    .guideExplainTag{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:9px;font-weight:950;border:1px solid var(--line);margin-bottom:7px}
+    .guideExplainTag.bxux{background:rgba(111,184,255,.12);border-color:rgba(111,184,255,.3);color:#9eccff}
+    .guideExplainTag.cx{background:rgba(255,138,128,.12);border-color:rgba(255,138,128,.3);color:#ffb2aa}
+    .guideExplainCard .explodeStack{margin-top:6px}
     .guideCard{border:1px solid var(--line);background:#0b1016;border-radius:14px;padding:10px}
     .guideShot{height:150px;border-radius:12px;background:#f4f6f8;position:relative;overflow:hidden}
     .guideShot.bad{background:#1a2028}
@@ -630,7 +640,7 @@
       .identifyResults{grid-template-columns:1fr}
     }
     @media(max-width:700px){
-      .identifyControls,.identifyUploadRow,.identifyGuideChecklist,.identifyGuideCards{grid-template-columns:1fr}
+      .identifyControls,.identifyUploadRow,.identifyGuideChecklist,.identifyGuideCards,.identifyGuideCards.guideExplodedLayout,.identifyGuideChecklist.guideExplainGrid{grid-template-columns:1fr}
       .garageAddRow{grid-template-columns:1fr}
       .garageAddRow .btn{width:100%}
     }
@@ -721,7 +731,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.1</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -4383,10 +4393,66 @@ const OFFICIAL_RECENT = [
   function renderIdentifyGuide(){
     const mode=identifyModeValue();
     const info=IDENTIFY_GUIDES[mode] || IDENTIFY_GUIDES.blade;
+    const cardsEl=$("#identifyGuideCards");
+    const checklistEl=$("#identifyGuideChecklist");
     $("#identifyGuideTitle").textContent=info.title;
     $("#identifyGuideDesc").textContent=info.desc;
+    cardsEl.classList.remove("guideExplodedLayout");
+    checklistEl.classList.remove("guideExplainGrid");
+
+    if(mode==="ratchet"){
+      cardsEl.classList.add("guideExplodedLayout");
+      checklistEl.classList.add("guideExplainGrid");
+      cardsEl.innerHTML = `
+        <div class="guideExplainCard">
+          <div class="guideExplainTag bxux">BX / UX</div>
+          <h4>Ratchet 在哪裡？（3 件結構）</h4>
+          <div class="explodeStack">
+            <div class="explodePiece blade"><b>1｜上蓋 / Blade</b><small>最上層的大零件，像蒼龍神劍、魔導神杖通常就是指這一件。</small></div>
+            <div class="explodeArrow">↓</div>
+            <div class="explodePiece ratchet"><b>2｜Ratchet 齒輪</b><small>就在中間層，夾在 Blade 和 Bit 之間；常見代碼像 1-60、3-60、9-60。</small></div>
+            <div class="explodeArrow">↓</div>
+            <div class="explodePiece bit"><b>3｜Bit 軸心</b><small>最底下接觸競技盤的零件，例如 F、H、B、FB。</small></div>
+          </div>
+          <div class="partsGuideTip"><b>新手先這樣記：</b>BX / UX 就是 <b>上蓋 → Ratchet → Bit</b>。</div>
+        </div>
+        <div class="guideExplainCard">
+          <div class="guideExplainTag cx">CX</div>
+          <h4>Ratchet 在哪裡？（5 件結構）</h4>
+          <div class="explodeStack">
+            <div class="explodePiece lock"><b>1｜Lock Chip 紋章</b><small>中央小圓章／圖樣。</small></div>
+            <div class="explodeArrow">↓</div>
+            <div class="explodePiece main"><b>2｜Main Blade 主刃</b><small>決定主要外形與刀刃感。</small></div>
+            <div class="explodeArrow">↓</div>
+            <div class="explodePiece assist"><b>3｜Assist Blade 輔刃</b><small>搭配主刃的外圈零件。</small></div>
+            <div class="explodeArrow">↓</div>
+            <div class="explodePiece ratchet"><b>4｜Ratchet 齒輪</b><small>一樣在上蓋模組下面、Bit 上面；核對混裝時要獨立看這一層。</small></div>
+            <div class="explodeArrow">↓</div>
+            <div class="explodePiece bit"><b>5｜Bit 軸心</b><small>最底部控制跑法的零件。</small></div>
+          </div>
+          <div class="partsGuideTip"><b>CX 重點：</b>Ratchet 不是 Lock / Main / Assist，本身是另外一層。</div>
+        </div>`;
+      checklistEl.innerHTML = `
+        <div class="guideExplainCard">
+          <h4>Ratchet 是什麼？</h4>
+          <ul>
+            <li><b>位置：</b>中間層，夾在 <b>Blade 上蓋</b> 和 <b>Bit 軸心</b> 中間。</li>
+            <li><b>常見代碼：</b><b>1-60、3-60、5-70、9-60</b> 都屬於 Ratchet。</li>
+            <li><b>粗略理解：</b>前面的數字可先看成外形／刃數差異，後面的 <b>60 / 70 / 80</b> 可先看成高度系列。</li>
+            <li><b>在本站怎麼看：</b>看到這種數字格式，大多就是 Ratchet，不是商品編號，也不是 Bit 代碼。</li>
+          </ul>
+        </div>
+        <div class="guideExplainCard">
+          <h4>怎麼拍才好辨識？</h4>
+          <ul>${info.do.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+          <h4 style="margin-top:10px">盡量避免</h4>
+          <ul>${info.dont.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+        </div>`;
+      return;
+    }
+
     const obj = mode==="bit" ? '<div class="guideObjectBit"></div>' : mode==="full" ? '<div class="guideObjectWhole"></div>' : '<div class="guideObjectCircle"></div>';
-    $("#identifyGuideCards").innerHTML = `
+    cardsEl.innerHTML = `
       <div class="guideCard">
         <div class="guideShot goodExample">${obj}</div>
         <div class="guideLabel"><span class="ok">✅ 正確示範</span><span>白底・置中・平拍</span></div>
@@ -4402,7 +4468,7 @@ const OFFICIAL_RECENT = [
         <div class="guideLabel"><span class="ng">❌ 錯誤示範</span><span>歪斜 / 手遮住 / 偏離中央</span></div>
         <div class="guideNote">角度太斜或手指遮到外圈，會讓輪廓判斷失真。</div>
       </div>`;
-    $("#identifyGuideChecklist").innerHTML = `
+    checklistEl.innerHTML = `
       <div class="guideChecklistBox">
         <h4>建議這樣拍</h4>
         <ul>${info.do.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
