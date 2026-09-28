@@ -255,6 +255,21 @@
     .ratchetExplain{margin-top:10px;border:1px solid var(--line);background:#0b1016;border-radius:14px;padding:12px}
     .ratchetExplain h3{margin:0 0 8px;font-size:13px}.ratchetExplain ul{margin:0;padding-left:18px;color:#c8d1dc;font-size:10px;line-height:1.7}
     .ratchetExplain li+li{margin-top:3px}
+    .specialStructureGuide{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+    .specialStructureHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+    .specialStructureHead h3{margin:0;font-size:14px}
+    .specialStructureHead p{margin:4px 0 0;color:#a7b3c3;font-size:10px;line-height:1.55}
+    .specialStructureBadge{display:inline-flex;align-items:center;border:1px solid rgba(255,190,59,.35);background:rgba(255,190,59,.1);color:#ffd477;border-radius:999px;padding:5px 9px;font-size:9px;font-weight:950}
+    .specialStructureGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .specialStructureCard{border:1px solid var(--line);background:#0b1016;border-radius:14px;padding:12px}
+    .specialStructureCard h4{margin:0 0 6px;font-size:12px}
+    .specialStructureCard p{margin:0;color:#a7b3c3;font-size:9px;line-height:1.6}
+    .specialStructureFormula{margin:9px 0;border:1px dashed #3a4656;border-radius:10px;padding:9px;background:#101721;font-size:10px;font-weight:850;line-height:1.55}
+    .specialStructureExamples{margin-top:8px;color:#cbd4df;font-size:9px;line-height:1.6}
+    .specialStructureExamples b{color:#fff}
+    .specialStructureWarn{margin-top:8px;border-left:3px solid var(--warn);padding:7px 9px;background:rgba(255,190,59,.07);color:#d9c99b;font-size:9px;line-height:1.55}
+    .specialStructureCard a{font-size:9px}
+    @media(max-width:700px){.specialStructureGrid{grid-template-columns:1fr}}
     @media(max-width:700px){.partsGuideGrid{grid-template-columns:1fr}.partsGuideCard h3,.ratchetExplain h3{font-size:14px}}
 
 
@@ -743,7 +758,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.2</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.3</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -781,11 +796,11 @@
         <div><b>Custom Line｜客製線</b><p>上蓋可拆成 Lock Chip＋Main Blade＋Assist Blade，再自由混搭。</p></div>
       </div>
     </div>
-    <div class="lineGuideFoot">例：<b>CX-01</b> 是商品系列編號；<b>1-60</b> 是 Ratchet 零件代碼；<b>R / H / FB</b> 是 Bit 軸心代碼。三種不要混在一起看。</div>
+    <div class="lineGuideFoot">例：<b>CX-01</b> 是商品系列編號；<b>1-60</b> 是 Ratchet 零件代碼；<b>R / H / FB</b> 是 Bit 軸心代碼。三種不要混在一起看。<br><b>特殊例外：</b>UX Expand 會把 Ratchet 做進 Blade；Ratchet 一體型 Bit 會把 Ratchet + Bit 合在一起；CX Expand 則把標準 CX 上蓋再拆成 4 件。下方有完整圖解。</div>
   </section>
 
   <section class="partsGuide" aria-label="新手零件爆炸圖">
-    <div class="partsGuideHead"><strong>新手零件爆炸圖</strong><span>BX / UX 通常看 3 件；CX 通常看 5 件。</span></div>
+    <div class="partsGuideHead"><strong>新手零件爆炸圖</strong><span>先看標準結構；Expand / 一體式例外在下方另外列出。</span></div>
     <div class="partsGuideGrid">
       <div class="partsGuideCard">
         <div class="partsGuideTag bxux">BX / UX</div><h3>完整結構（3 件）</h3>
@@ -825,6 +840,54 @@
         <li><b>不要混淆：</b>CX-01 / UX-21 是商品編號；1-60 / 9-60 是 Ratchet；F / H / FB 是 Bit。</li>
         <li><b>例外：</b>少數 UX Expand 會把 Ratchet 做進 Blade 裡，不能另外換獨立 Ratchet。</li>
       </ul>
+    </div>
+
+    <div class="specialStructureGuide">
+      <div class="specialStructureHead">
+        <div>
+          <h3>⚠️ 特殊結構 / 不是標準件數的款式</h3>
+          <p>不是每顆都固定 3 件或 5 件。2026 的 Expand Blade 與一體式零件已經出現幾種例外，買到這些時不要硬找「少掉的 Ratchet」。</p>
+        </div>
+        <span class="specialStructureBadge">官方結構例外</span>
+      </div>
+
+      <div class="specialStructureGrid">
+        <div class="specialStructureCard">
+          <h4>① UX Expand｜Ratchet 一體型 Blade → 整顆 2 件</h4>
+          <p>Ratchet 已經做進 Blade 裡，所以組裝時只有「一體型 Blade + Bit」兩個主要可拆單元。</p>
+          <div class="specialStructureFormula">Ratchet 一體型 Blade ＋ Bit<br>＝ 2 件式</div>
+          <div class="specialStructureExamples"><b>官方例：</b>UX-19 Bullet Griffon H、UX-20 Glory Valkyrie LF、UX-21 Hells Nether Z、UX-00 Glory Valkyrie LF 金屬塗層：藍。</div>
+          <div class="specialStructureWarn"><b>注意：</b>UX Expand Blade 不能再裝獨立 Ratchet，也不能裝「Ratchet 一體型 Bit」。Hells Nether 就屬於這一類；不是少了一顆 Ratchet。</div>
+          <a href="https://beyblade.takaratomy.co.jp/beyblade-x/help/noratchet/" target="_blank" rel="noopener">官方 UX Expand 相容性說明 ↗</a>
+        </div>
+
+        <div class="specialStructureCard">
+          <h4>② Ratchet 一體型 Bit｜Ratchet + Bit 合成 1 件</h4>
+          <p>這次反過來：上蓋正常，但中間 Ratchet 與最下面 Bit 合併成一個零件。</p>
+          <div class="specialStructureFormula">標準 CX 上蓋 3 件 ＋ Ratchet 一體型 Bit<br>＝ 實際可拆 4 件</div>
+          <div class="specialStructureExamples"><b>官方例：</b>CX-07 Pegasus Blast ATr；CX-00 Pegasus Blast ATr 金屬塗層：紅也是同結構。</div>
+          <div class="specialStructureWarn"><b>辨識重點：</b>名稱裡沒有像 3-60、9-60 這種獨立 Ratchet 數字，不代表漏件；ATr 的 Bit 本身已包含 Ratchet 功能。</div>
+          <a href="https://beyblade.takaratomy.co.jp/beyblade-x/lineup/cx07.html" target="_blank" rel="noopener">官方 Pegasus Blast ATr 商品頁 ↗</a>
+        </div>
+
+        <div class="specialStructureCard">
+          <h4>③ CX Expand｜上蓋由 3 件變 4 件 → 整顆 6 件</h4>
+          <p>標準 CX 的 Main Blade 被進一步拆成 Metal Blade + Over Blade，所以 CX 上蓋從 3 件增加到 4 件。</p>
+          <div class="specialStructureFormula">Lock Chip ＋ Metal Blade ＋ Over Blade ＋ Assist Blade<br>＋ Ratchet ＋ Bit ＝ 6 件</div>
+          <div class="specialStructureExamples"><b>官方例：</b>CX-13 Bahamut Blitz BK1-50I、CX-14 Knight Fortress GV8-70UN、CX-15 Ragna Rage FE4-55Y、CX-16 Start Dash Set C 內的 CX Expand 款。</div>
+          <div class="specialStructureWarn"><b>所以：</b>看到 CX Expand 時，不要再找「Main Blade」那一整件；它已被拆成 Metal + Over 兩層。</div>
+          <a href="https://beyblade.takaratomy.co.jp/gear/" target="_blank" rel="noopener">官方 Gear Structure / Expand Blade 說明 ↗</a>
+        </div>
+
+        <div class="specialStructureCard">
+          <h4>④ BX Expand｜外型特殊，但件數仍是標準 3 件</h4>
+          <p>BX Expand 是把 BX Blade 的金屬結構做強化，並沒有把 Ratchet 或 Bit 合併，所以拆裝件數不變。</p>
+          <div class="specialStructureFormula">Blade ＋ Ratchet ＋ Bit<br>＝ 還是 3 件</div>
+          <div class="specialStructureExamples"><b>官方例：</b>BX-49 Dran Strike 4-50FF、BX-50 Heaven's Ring 0-80DS、BX-52 Luster Dragoon 6-60LC。</div>
+          <div class="specialStructureWarn"><b>新手最容易誤會：</b>名字有「Expand」不等於件數一定改變。BX Expand 還是 3 件；UX Expand 才是 Ratchet 一體；CX Expand 則是上蓋多拆 1 件。</div>
+          <a href="https://beyblade.takaratomy.co.jp/gear/" target="_blank" rel="noopener">官方 Expand Blade 分類 ↗</a>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1294,7 +1357,7 @@
     scorpiospear:"UX-14",
     clockmirage:"UX-13",
     heavensring:"BX-50",
-    bulletgriffon:"CX-12"
+    bulletgriffon:"UX-19"
   };
 
   const META_NAME_ALIASES = {
