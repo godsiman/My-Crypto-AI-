@@ -494,7 +494,10 @@
     .garageHead p{margin:5px 0 0;color:var(--muted);font-size:10px;line-height:1.55}
     .garageCount{display:inline-flex;align-items:center;border:1px solid var(--line);background:#0c1117;color:#bfc9d5;border-radius:999px;padding:6px 9px;font-size:9px;font-weight:900;white-space:nowrap}
     .garageAddRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:0 16px 12px}
-    .garageAddRow select{width:100%;min-width:0;border:1px solid var(--line);background:#090e14;color:var(--text);border-radius:11px;padding:11px 12px;outline:none}
+    .garageSearchWrap{grid-column:1/-1;display:grid;gap:6px}
+    .garageSearchWrap input,.garageAddRow select{width:100%;min-width:0;border:1px solid var(--line);background:#090e14;color:var(--text);border-radius:11px;padding:11px 12px;outline:none}
+    .garageSearchHint{color:#8592a2;font-size:9px;line-height:1.45}
+    .garageSelectMeta{grid-column:1/-1;color:#7f8b99;font-size:9px;line-height:1.45;margin-top:-2px}
     .garageModeRow{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
     .garageToggle{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--line);background:#0d1218;border-radius:11px;padding:10px;cursor:pointer}
     .garageToggle input{margin-top:3px;width:17px;height:17px;accent-color:var(--good)}
@@ -603,6 +606,8 @@
     }
     @media(max-width:700px){
       .identifyControls,.identifyUploadRow,.identifyGuideChecklist,.identifyGuideCards{grid-template-columns:1fr}
+      .garageAddRow{grid-template-columns:1fr}
+      .garageAddRow .btn{width:100%}
     }
 
 
@@ -671,13 +676,27 @@
       .identifyPartStrip{grid-template-columns:repeat(3,minmax(0,1fr))}
     }
 
+
+    .mixDefaultNotice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 16px 12px;padding:10px 12px;border:1px solid rgba(101,167,255,.28);background:rgba(101,167,255,.06);border-radius:12px}
+    .mixDefaultNotice b{display:block;font-size:10px;color:#a9d2ff}.mixDefaultNotice span{display:block;margin-top:3px;color:#8492a2;font-size:8px;line-height:1.45}
+    .mixOnPill{flex:0 0 auto!important;margin:0!important;border:1px solid rgba(41,211,145,.34);background:rgba(41,211,145,.08);color:#7ce5ba!important;border-radius:999px;padding:5px 7px;font-weight:950;font-size:8px!important}
+    .mixDiagnosis{grid-column:1/-1;border:1px solid rgba(101,167,255,.3);background:linear-gradient(180deg,rgba(101,167,255,.055),rgba(13,18,24,.92));border-radius:14px;padding:11px}
+    .mixDiagnosisHead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.mixDiagnosisHead h3{margin:3px 0 0;font-size:14px}.mixDiagnosisHead p{margin:4px 0 0;color:#8391a1;font-size:8px;line-height:1.45}
+    .mixVerdict{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;padding:5px 7px;font-size:8px;font-weight:950}.mixVerdict.mixed{color:#ffd171;border-color:rgba(255,208,90,.32);background:rgba(255,208,90,.07)}.mixVerdict.stock{color:#7ce5ba;border-color:rgba(41,211,145,.32);background:rgba(41,211,145,.07)}
+    .mixSlots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:9px}.mixSlot{border:1px solid var(--line);background:#090e14;border-radius:10px;padding:7px;min-width:0}
+    .mixSlotTitle{display:flex;justify-content:space-between;gap:5px;align-items:center;font-size:9px;font-weight:950;color:#b8c5d2}.mixSlotTitle em{font-style:normal;color:#7ce5ba;font-size:8px}
+    .mixPartHero{display:grid;grid-template-columns:58px minmax(0,1fr);gap:7px;align-items:center;margin-top:6px}.mixPartImg{height:58px;background:#f4f6f8;border-radius:8px;display:grid;place-items:center;overflow:hidden}.mixPartImg img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+    .mixPartName{font-size:10px;font-weight:950;line-height:1.3}.mixPartEn{margin-top:2px;color:#8090a0;font-size:7px}.mixPartSrc{margin-top:4px;color:#9dacbb;font-size:7px;line-height:1.4}.mixAlternates{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}.mixAlt{border:1px solid var(--line);border-radius:999px;padding:3px 5px;color:#98a6b5;font-size:7px}
+    .mixBottomNote{margin-top:8px;border-top:1px solid var(--line);padding-top:7px;color:#8b98a7;font-size:8px;line-height:1.5}
+    @media(max-width:700px){.mixSlots{grid-template-columns:1fr}.mixPartHero{grid-template-columns:64px minmax(0,1fr)}}
+
   </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V18</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V20</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -905,10 +924,15 @@
       </div>
 
       <div class="garageAddRow">
+        <div class="garageSearchWrap">
+          <input id="garageBeySearch" type="text" placeholder="可直接輸入：CX、CX-06、UX-21、魔導、蒼龍、Wizard…" aria-label="搜尋你已買到的整顆陀螺">
+          <div class="garageSearchHint">支援編號開頭、完整編號、中文、英文與模糊搜尋；例如輸入 <b>CX</b>、<b>CX-0</b>、<b>魔導</b>、<b>蒼龍</b> 都可以。</div>
+        </div>
         <select id="garageBeySelect" aria-label="加入我已有的陀螺">
           <option value="">載入商品資料中…</option>
         </select>
         <button id="garageAddBtn" class="btn primary" type="button">＋ 加入我的陀螺</button>
+        <div id="garageSelectMeta" class="garageSelectMeta">預設顯示全部商品；輸入關鍵字後會自動縮小範圍。</div>
       </div>
 
       <div class="garageModeRow">
@@ -974,9 +998,14 @@
         <div>
           <div class="eyebrow">PHOTO CHECK / OFFICIAL VERIFY</div>
           <h2>拍照核對・官方商品對照</h2>
-          <p>先照「官方擺放拍法」拍，再上傳照片。照片會在你的手機瀏覽器內做 <b>顏色＋輪廓分布的實際影像比對</b>，再列出最接近的官方候選；提示字只做輔助，不會再直接把 BX-01、BX-02…依序丟給你。</p>
+          <p>先照「官方擺放拍法」拍，再上傳照片。照片會在你的手機瀏覽器內做 <b>顏色＋輪廓分布的實際影像比對</b>，並預設以<b>可能混裝 / 拆件</b>的思路輔助搜尋；提示字可輸入編號開頭、完整編號、中文或英文關鍵字。</p>
         </div>
-        <span class="garageCount">朋友也能用</span>
+        <span class="garageCount">V20 混裝拆件辨識</span>
+      </div>
+
+      <div class="mixDefaultNotice">
+        <div><b>🧩 混裝拆件辨識：預設開啟</b><span>不先假設它是原廠完整款；上蓋照片會把 Lock Chip／Main Blade／Assist Blade 分開找，再對照完整官方商品。</span></div>
+        <span class="mixOnPill">ON</span>
       </div>
 
       <div class="identifyControls">
@@ -989,8 +1018,8 @@
           </select>
         </div>
         <div class="identifyField identifyGrow">
-          <label for="identifyHint">提示字（選填）</label>
-          <input id="identifyHint" type="text" placeholder="例如：蒼龍、魔導、UX-21、H、六角、藍色、左轉…">
+          <label for="identifyHint">提示字（選填，支援模糊比對）</label>
+          <input id="identifyHint" type="text" placeholder="例如：CX、CX-06、蒼龍、魔導、UX-21、H、六角、藍色、左轉…">
         </div>
       </div>
 
@@ -1028,7 +1057,7 @@
         <div>
           <div class="eyebrow">VERIFY RESULT</div>
           <h2>候選清單</h2>
-          <p id="identifyResultIntro">上傳照片後會真的做影像比對，候選會顯示「總相似度／顏色／輪廓」。你仍可用官方整顆圖與零件圖做最後人工確認。</p>
+          <p id="identifyResultIntro">上傳照片後會先做「混裝拆件判斷」，再做完整官方商品比對；候選會顯示總相似度／顏色／輪廓。</p>
         </div>
       </div>
       <div id="identifyResults" class="identifyResults">
@@ -1597,7 +1626,14 @@ const OFFICIAL_RECENT = [
 
   const $ = s => document.querySelector(s);
   const strip = s => (s||"").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
-  const norm = s => strip(s).toLowerCase().replace(/[^a-z0-9]/g,"");
+  const norm = s => strip(s)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[｜|／/\_]+/g," ")
+    .replace(/[^a-z0-9㐀-鿿\-\s]+/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+  const compactNorm = s => norm(s).replace(/[\s\-]+/g,"");
   const esc = s => String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
   const today = () => new Date();
   const isReleased = p => !p.release_at || new Date(p.release_at) <= today();
@@ -1605,6 +1641,61 @@ const OFFICIAL_RECENT = [
   function toast(msg){
     const el=$("#toast"); el.textContent=msg; el.classList.add("show");
     clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove("show"),1700);
+  }
+
+  function levenshtein(a,b){
+    a=a||""; b=b||"";
+    const m=a.length,n=b.length;
+    if(!m) return n; if(!n) return m;
+    const dp=new Array(n+1);
+    for(let j=0;j<=n;j++) dp[j]=j;
+    for(let i=1;i<=m;i++){
+      let prev=dp[0]; dp[0]=i;
+      for(let j=1;j<=n;j++){
+        const tmp=dp[j];
+        dp[j]=Math.min(dp[j]+1, dp[j-1]+1, prev + (a[i-1]===b[j-1]?0:1));
+        prev=tmp;
+      }
+    }
+    return dp[n];
+  }
+
+  function searchScore(query,text){
+    const q=norm(query), t=norm(text), qc=compactNorm(query), tc=compactNorm(text);
+    if(!q) return 0;
+    if(!t) return 0;
+    if(q===t || qc===tc) return 1;
+    if(t.startsWith(q) || tc.startsWith(qc)) return .97;
+    if(t.includes(q) || tc.includes(qc)) return .9;
+    const qTokens=q.split(/\s+/).filter(Boolean);
+    const tTokens=t.split(/\s+/).filter(Boolean);
+    let best=0;
+    for(const qq of qTokens){
+      for(const tt of tTokens){
+        if(!qq || !tt) continue;
+        if(tt===qq) best=Math.max(best,.95);
+        else if(tt.startsWith(qq) || qq.startsWith(tt)) best=Math.max(best,.86);
+        else if(tt.includes(qq) || qq.includes(tt)) best=Math.max(best,.8);
+        else {
+          const sim=1-(levenshtein(qq,tt)/Math.max(qq.length,tt.length,1));
+          if(sim>=.55) best=Math.max(best,.45+sim*.35);
+        }
+      }
+    }
+    if(qTokens.length>1){
+      const hits=qTokens.filter(qq=>t.includes(qq) || tc.includes(compactNorm(qq))).length;
+      if(hits) best=Math.max(best, Math.min(.92,.55 + hits/qTokens.length*.25));
+    }
+    return Math.min(1,best);
+  }
+
+  function sortBySearch(query, rows, textGetter){
+    const q=strip(query||"");
+    if(!q) return rows.slice();
+    return rows.map(row=>({row,_search:searchScore(q,textGetter(row)||"")}))
+      .filter(x=>x._search>0)
+      .sort((a,b)=>b._search-a._search)
+      .map(x=>({...(x.row||{}), searchScore:x._search}));
   }
 
   function extractSource(desc, title){
@@ -3497,8 +3588,17 @@ const OFFICIAL_RECENT = [
   function garageSave(){ localStorage.setItem("beyx-garage",JSON.stringify(state.garageItems)); }
 
   function garageAddSelected(){
-    const id=$("#garageBeySelect").value;
-    if(!id){toast("先選一顆你已有的陀螺");return;}
+    const sel=$("#garageBeySelect");
+    const query=$("#garageBeySearch")?.value?.trim() || "";
+    const id=sel.value;
+    if(!id){
+      if(query){
+        renderGaragePicker();
+        if(sel.value){ garageAddSelected(); return; }
+      }
+      toast("先輸入關鍵字或選一顆你已有的陀螺");
+      return;
+    }
     const existing=state.garageItems.find(x=>x.id===id);
     if(existing) existing.qty=(existing.qty||1)+1;
     else state.garageItems.push({id,qty:1});
@@ -3544,16 +3644,40 @@ const OFFICIAL_RECENT = [
     return map;
   }
 
+  function garageEntrySearchText(x){
+    return [x.code,x.title,x.label,x.parts?.blade?.zh,x.parts?.blade?.en,x.parts?.main?.zh,x.parts?.main?.en].filter(Boolean).join(" ");
+  }
+
   function renderGaragePicker(){
     const sel=$("#garageBeySelect"); if(!sel) return;
-    const entries=garageCatalogEntries();
+    const searchBox=$("#garageBeySearch");
+    const current=sel.value;
+    const query=searchBox?.value?.trim() || "";
+    let entries=garageCatalogEntries();
+    if(query){
+      entries=sortBySearch(query,entries,garageEntrySearchText);
+    }
     const groups=[
       ["近期新品 / 限定",entries.filter(x=>x.kind==="special")],
       ["套裝 / Deck Set",entries.filter(x=>x.kind==="set"||x.kind==="setbey")],
       ["一般 BX / UX / CX",entries.filter(x=>x.kind==="stock")]
     ];
+    const count=entries.length;
+    const meta=$("#garageSelectMeta");
+    if(meta){
+      meta.innerHTML=query
+        ? `目前符合 <b>${esc(query)}</b> 的共有 <b>${count}</b> 項；支援編號開頭（如 CX-0）、完整編號與中文 / 英文模糊搜尋。`
+        : `預設顯示全部 <b>${garageCatalogEntries().length}</b> 項商品；可直接輸入編號開頭、完整編號、中文或英文來縮小範圍。`;
+    }
+    if(!entries.length){
+      sel.innerHTML='<option value="">找不到符合條件的商品</option>';
+      return;
+    }
     sel.innerHTML='<option value="">— 選擇你已經買到的整顆陀螺 —</option>'+
       groups.map(([name,arr])=>arr.length?`<optgroup label="${name}">${arr.map(x=>`<option value="${esc(x.id)}">${esc(x.label)}</option>`).join("")}</optgroup>`:"").join("");
+    const selectedExists=[...sel.options].some(o=>o.value===current);
+    if(selectedExists) sel.value=current;
+    else if(query && entries[0]) sel.value=entries[0].id;
   }
 
   function renderGarageBeys(){
@@ -3789,9 +3913,9 @@ const OFFICIAL_RECENT = [
   }
 
   function identifyTextForEntry(entry){
-    const parts=Object.values(entry.parts||{}).filter(Boolean).map(p=>[p.zh,p.en].filter(Boolean).join(" ")).join(" ");
+    const parts=Object.values(entry.parts||{}).filter(Boolean).map(p=>[p.zh,p.en,p.type,p.code].filter(Boolean).join(" ")).join(" ");
     const base=[entry.code,entry.name,entry.subtitle,entry.primary?.zh,entry.primary?.en,parts].filter(Boolean).join(" ");
-    return norm(base);
+    return base;
   }
 
   function identifyBitEntries(){
@@ -3965,9 +4089,9 @@ const OFFICIAL_RECENT = [
   }
 
   function identifyHintBonus(entry,hint){
-    const h=norm(hint||"");
-    if(!h) return 0;
-    return identifyTextForEntry(entry).includes(h) ? .06 : 0;
+    const score=searchScore(hint||"", identifyTextForEntry(entry));
+    if(!score) return 0;
+    return Math.min(.18, .04 + score*.14);
   }
 
   async function visualMatchProducts(file,mode,hint,onProgress){
@@ -4001,11 +4125,112 @@ const OFFICIAL_RECENT = [
       if(!entry.image) return null;
       const feat=await featureForUrl(entry.image,"bit");
       const sim=featureSimilarity(userFeature,feat,"bit");
-      const h=norm(hint||"");
-      const bonus=h && norm([entry.code,entry.name,...entry.sources].join(" ")).includes(h) ? .06 : 0;
+      const bonus=Math.min(.18, (searchScore(hint||"", [entry.code,entry.name,...entry.sources].join(" "))||0) * .18);
       return {...entry,match:{ref:{url:entry.image,label:"官方 Bit 圖"},sim},score:Math.min(1,sim.total+bonus)};
     },onProgress);
     return scored.filter(Boolean).sort((a,b)=>b.score-a.score);
+  }
+
+
+  function partSearchText(p){
+    return [p&&p.en,p&&p.zh,p&&p.key,p&&p.type].concat((p&&p.sources)||[]).filter(Boolean).join(" ");
+  }
+
+  function regionCanvasForComponent(img,slot){
+    const size=96,c=document.createElement("canvas");c.width=size;c.height=size;
+    const ctx=c.getContext("2d",{willReadFrequently:true});
+    const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+    const side=Math.min(w,h)*.86,sx=(w-side)/2,sy=(h-side)/2;
+    ctx.drawImage(img,sx,sy,side,side,0,0,size,size);
+    const im=ctx.getImageData(0,0,size,size),d=im.data;
+    for(let y=0;y<size;y++) for(let x=0;x<size;x++){
+      const dx=(x+.5-size/2)/(size/2),dy=(y+.5-size/2)/(size/2),r=Math.sqrt(dx*dx+dy*dy);
+      let keep=true;
+      if(slot==="lock") keep=r<.43;
+      else if(slot==="main") keep=r>.28 && r<.95;
+      else if(slot==="assist") keep=r>.38 && r<.84;
+      if(!keep) d[(y*size+x)*4+3]=0;
+    }
+    ctx.putImageData(im,0,0);
+    return c;
+  }
+
+  function componentSimilarity(userFeat,refFeat){
+    const base=featureSimilarity(userFeat,refFeat,"blade");
+    const meanDist=Math.sqrt(userFeat.mean.reduce((s,v,i)=>s+(v-refFeat.mean[i])**2,0)/3);
+    const mean=Math.max(0,1-meanDist*1.7);
+    const total=Math.max(0,Math.min(1,base.color*.66+mean*.18+base.shape*.16));
+    return {total:total,color:Math.max(0,Math.min(1,base.color*.82+mean*.18)),shape:base.shape};
+  }
+
+  async function visualMatchPartSlot(userImg,slot,hint){
+    const parts=(state.parts[slot]||[]).filter(p=>findImage(p));
+    if(!parts.length) return [];
+    const region=regionCanvasForComponent(userImg,slot);
+    const userFeat=extractVisualFeature(region,"blade");
+    const scored=await poolMap(parts,6,async p=>{
+      const url=findImage(p); if(!url) return null;
+      try{
+        const feat=await featureForUrl(url,"blade");
+        const sim=componentSimilarity(userFeat,feat);
+        const hintScore=searchScore(hint||"",partSearchText(p));
+        return {part:p,url:url,sim:sim,score:Math.min(1,sim.total+hintScore*.22)};
+      }catch(e){return null;}
+    });
+    return scored.filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,3);
+  }
+
+  function sourceCodesForPart(p){
+    const set=new Set();
+    for(const s of (p&&p.sources)||[]){
+      const ms=String(s).match(/(?:BX|UX|CX)-\d+(?:-\d+)?/ig)||[];
+      ms.forEach(x=>set.add(x.toUpperCase()));
+    }
+    return set;
+  }
+
+  function commonSourceCodes(parts){
+    const sets=parts.filter(Boolean).map(sourceCodesForPart).filter(s=>s.size);
+    if(!sets.length) return [];
+    let common=new Set(sets[0]);
+    for(const s of sets.slice(1)) common=new Set([...common].filter(x=>s.has(x)));
+    return [...common];
+  }
+
+  async function analyzeMixedCx(file,hint){
+    const userImg=await loadVisualImage(URL.createObjectURL(file));
+    const values=await Promise.all([
+      visualMatchPartSlot(userImg,"lock",hint),
+      visualMatchPartSlot(userImg,"main",hint),
+      visualMatchPartSlot(userImg,"assist",hint)
+    ]);
+    const lock=values[0],main=values[1],assist=values[2];
+    const bestParts=[lock[0]&&lock[0].part,main[0]&&main[0].part,assist[0]&&assist[0].part].filter(Boolean);
+    const common=commonSourceCodes(bestParts);
+    return {lock:lock,main:main,assist:assist,common:common,likelyMixed:bestParts.length>=2&&common.length===0};
+  }
+
+  function mixedSlotHtml(title,rows){
+    if(!rows||!rows.length) return '<div class="mixSlot"><div class="mixSlotTitle"><span>'+esc(title)+'</span><em>無足夠資料</em></div></div>';
+    const top=rows[0],p=top.part;
+    const src=(p.sources||[]).slice(0,2).join(" / ")||"尚無來源商品標記";
+    const alts=rows.slice(1).map(r=>'<span class="mixAlt">'+esc(r.part.zh||r.part.en)+' '+pct(r.score)+'%</span>').join("");
+    return '<div class="mixSlot"><div class="mixSlotTitle"><span>'+esc(title)+'</span><em>'+pct(top.score)+'%</em></div>'+
+      '<div class="mixPartHero"><div class="mixPartImg"><img src="'+esc(top.url)+'" alt="'+esc(p.zh||p.en)+'"></div>'+
+      '<div><div class="mixPartName">'+esc(p.zh||p.en)+'</div><div class="mixPartEn">'+esc(p.en||"")+'</div><div class="mixPartSrc">來源：'+esc(src)+'</div></div></div>'+
+      '<div class="mixAlternates">'+alts+'</div></div>';
+  }
+
+  function renderMixedDiagnosis(mix){
+    if(!mix) return "";
+    const verdict=mix.likelyMixed?"疑似混裝":"可能原廠同組";
+    const cls=mix.likelyMixed?"mixed":"stock";
+    const common=mix.common.length?"共同來源："+mix.common.join("、"):"目前三個上蓋零件沒有找到共同官方商品編號";
+    return '<section class="mixDiagnosis"><div class="mixDiagnosisHead"><div><div class="eyebrow">MIXED CX CHECK</div>'+
+      '<h3>先拆開找：Lock / Main / Assist</h3><p>這一區不先假設整顆是原廠配置，而是把照片不同區域分別跟官方零件圖比。</p></div>'+
+      '<span class="mixVerdict '+cls+'">'+verdict+'</span></div><div class="mixSlots">'+
+      mixedSlotHtml("Lock Chip 紋章",mix.lock)+mixedSlotHtml("Main Blade 主刃",mix.main)+mixedSlotHtml("Assist Blade 輔刃",mix.assist)+
+      '</div><div class="mixBottomNote">'+esc(common)+'。Ratchet / Bit 從正上方通常看不到，網站不會硬猜；要確認底部請再拍底面或側面。</div></section>';
   }
 
   function pct(x){ return Math.round(Math.max(0,Math.min(1,x||0))*100); }
@@ -4072,24 +4297,17 @@ const OFFICIAL_RECENT = [
   }
 
   function identifySearchEntries(mode,hintText){
-    const hint=norm(hintText || "");
+    const hint=strip(hintText || "");
     if(mode==="bit"){
       let rows=identifyBitEntries();
-      if(hint) rows=rows.filter(x=>norm([x.code,x.name,...x.sources].join(" ")).includes(hint));
+      if(hint) rows=sortBySearch(hint,rows,x=>[x.code,x.name,...(x.sources||[])].join(" "));
       else rows=rows.slice(0,12);
       return rows;
     }else{
       let rows=identifyProductEntries();
-      if(mode==="blade"){
-        if(hint){
-          rows=rows.filter(x=>norm([x.primary?.zh,x.primary?.en,x.code,x.name].filter(Boolean).join(" ")).includes(hint));
-        }else{
-          rows=rows.filter(x=>!!x.primary).slice(0,12);
-        }
-      }else{
-        if(hint) rows=rows.filter(x=>identifyTextForEntry(x).includes(hint));
-        else rows=rows.slice(0,12);
-      }
+      if(mode==="blade") rows=rows.filter(x=>!!x.primary);
+      if(hint) rows=sortBySearch(hint,rows,identifyTextForEntry);
+      else rows=rows.slice(0,12);
       return rows;
     }
   }
@@ -4151,12 +4369,12 @@ const OFFICIAL_RECENT = [
 
     if(!file){
       const rows=identifySearchEntries(mode,hint).slice(0,8);
-      $("#identifyResultIntro").textContent="目前沒有照片，所以只能用你輸入的提示字搜尋；要做真正影像比對請先上傳照片。";
+      $("#identifyResultIntro").textContent="目前沒有照片，所以先用你輸入的提示字做智慧搜尋；支援編號開頭、完整編號、中文 / 英文模糊比對。要做真正影像比對請先上傳照片。";
       if(!rows.length){
         box.innerHTML='<div class="identifyHintBox">請先上傳照片，或輸入商品編號／中文名／英文名再搜尋。</div>';
         return;
       }
-      box.innerHTML='<div class="identifyConfidenceNote">⚠️ 目前是「文字搜尋」，不是影像辨識。上傳照片後才會計算顏色與輪廓相似度。</div>'+
+      box.innerHTML='<div class="identifyConfidenceNote">⚠️ 目前是「文字搜尋」，不是影像辨識；但支援編號前綴、中文 / 英文與模糊比對。上傳照片後才會計算顏色與輪廓相似度。</div>'+
         rows.map((row,i)=>mode==="bit"
           ? `<article class="identifyCard"><div class="identifyName">${esc(row.name)}</div><div class="identifySub">${esc(row.code)}</div></article>`
           : `<article class="identifyCard"><div class="identifyTop"><span class="metaProductTag">${esc(row.code||"")}</span></div><div class="identifyImg">${row.image?`<img src="${esc(row.image)}" alt="${esc(row.name)}">`:""}</div><div class="identifyName">${esc(row.name)}</div></article>`
@@ -4176,19 +4394,23 @@ const OFFICIAL_RECENT = [
     };
 
     try{
-      let rows;
+      let rows, mix=null;
       if(mode==="bit") rows=await visualMatchBits(file,hint,onProgress);
-      else rows=await visualMatchProducts(file,mode,hint,onProgress);
+      else {
+        const results=await Promise.all([visualMatchProducts(file,mode,hint,onProgress),analyzeMixedCx(file,hint)]);
+        rows=results[0]; mix=results[1];
+      }
 
       // Only show a short ranked list. If confidence is weak, say so instead of pretending.
       const top=rows.slice(0,6);
       const best=top[0]?.score||0;
-      $("#identifyResultIntro").textContent=`已完成實際影像比對。最高相似度 ${pct(best)}%；候選依照片相似度排序，顏色不合的會被明顯降分。`;
+      $("#identifyResultIntro").textContent=`已完成實際影像比對。最高相似度 ${pct(best)}%；系統預設以可能混裝 / 拆件的思路輔助排序，且顏色不合的候選會被明顯降分。`;
       if(!top.length){
         box.innerHTML='<div class="identifyHintBox">官方圖載入失敗或沒有可比對候選。請換成白底、置中的照片再試一次。</div>';
         return;
       }
-      box.innerHTML=(best<.50?'<div class="identifyConfidenceNote">⚠️ 這張照片的最高相似度偏低，我不會把第一名當成確定答案。建議改成白底、正上方、物件置中後重拍。</div>':"")+
+      box.innerHTML=(mode!=="bit"?renderMixedDiagnosis(mix):"")+
+        (best<.50?'<div class="identifyConfidenceNote">⚠️ 這張照片的最高相似度偏低，我不會把第一名當成確定答案。建議改成白底、正上方、物件置中後重拍。</div>':"")+
         top.map((row,i)=>mode==="bit" ? identifyResultCardBit(row,i) : identifyResultCardProduct(row,i)).join("");
 
       if(mode==="bit"){
@@ -4278,6 +4500,18 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
   $("#identifySearch").addEventListener("click",performIdentifySearch);
   $("#identifyReset").addEventListener("click",resetIdentifyPage);
   $("#garageAddBtn").addEventListener("click",garageAddSelected);
+  $("#garageBeySearch")?.addEventListener("input",()=>renderGaragePicker());
+  $("#garageBeySearch")?.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.preventDefault(); garageAddSelected(); }
+  });
+  $("#garageBeySelect")?.addEventListener("change",()=>{
+    const sel=$("#garageBeySelect");
+    const search=$("#garageBeySearch");
+    if(sel?.value && search && !search.value.trim()){
+      const entry=garageEntryById(sel.value);
+      if(entry) search.value=`${entry.code} ${entry.title}`;
+    }
+  });
   $("#garageGenerate").addEventListener("click",generateGarageBuilds);
   $("#garageClear").addEventListener("click",()=>{
     state.garageItems=[]; state.garageResults=[]; garageSave(); renderGarage(); toast("已清空我的陀螺");
