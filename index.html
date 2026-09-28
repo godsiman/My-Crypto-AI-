@@ -602,6 +602,18 @@
     .guideExplainTag.bxux{background:rgba(111,184,255,.12);border-color:rgba(111,184,255,.3);color:#9eccff}
     .guideExplainTag.cx{background:rgba(255,138,128,.12);border-color:rgba(255,138,128,.3);color:#ffb2aa}
     .guideExplainCard .explodeStack{margin-top:6px}
+    .guideActualPiece{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:9px;background:#101720;position:relative}
+    .guideActualPiece.isFocus{border-color:#ff5a52;box-shadow:0 0 0 1px rgba(255,90,82,.3) inset;background:linear-gradient(180deg,rgba(255,78,69,.12),#101720)}
+    .guideActualPiece.isFocus::after{content:"你現在看的部位";position:absolute;right:8px;top:7px;font-size:8px;font-weight:950;color:#ff9b95}
+    .guideActualThumb{width:78px;height:78px;border-radius:10px;background:#f4f6f8;display:grid;place-items:center;overflow:hidden}
+    .guideActualThumb img{width:100%;height:100%;object-fit:contain;display:block}
+    .guideActualThumb .fallback{font-size:9px;color:#1c2733;padding:6px;text-align:center}
+    .guideActualText{min-width:0;padding-right:4px}
+    .guideActualText b{display:block;font-size:11px;margin-bottom:3px}
+    .guideActualText small{display:block;color:#a7b3c3;font-size:9px;line-height:1.5}
+    .guideActualText em{display:inline-block;margin-top:5px;font-style:normal;font-size:8px;color:#7fa5c9}
+    .guideExplodedArrow{text-align:center;color:#6f7d8e;font-size:18px;line-height:1;margin:2px 0}
+    @media(max-width:700px){.guideActualPiece{grid-template-columns:68px minmax(0,1fr)}.guideActualThumb{width:68px;height:68px}}
     .guideCard{border:1px solid var(--line);background:#0b1016;border-radius:14px;padding:10px}
     .guideShot{height:150px;border-radius:12px;background:#f4f6f8;position:relative;overflow:hidden}
     .guideShot.bad{background:#1a2028}
@@ -731,7 +743,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.1</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.2</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1128,9 +1140,9 @@
     <section class="panel identifyGuidePanel">
       <div class="identifyGuideHead">
         <div>
-          <div class="eyebrow">OFFICIAL-STYLE PHOTO GUIDE</div>
-          <h2 id="identifyGuideTitle">上蓋拍照建議</h2>
-          <p id="identifyGuideDesc">讓你的照片更接近官方平拍風格，候選比對會容易很多。</p>
+          <div class="eyebrow">PART STRUCTURE / EXPLODED GUIDE</div>
+          <h2 id="identifyGuideTitle">上蓋 / Blade 位置說明</h2>
+          <p id="identifyGuideDesc">用實際零件圖＋爆炸結構看懂你正在拍哪一層，再做影像核對。</p>
         </div>
       </div>
       <div id="identifyGuideCards" class="identifyGuideCards"></div>
@@ -1168,27 +1180,6 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script>
-(function(){
-  function show(msg){
-    var el=document.getElementById("liveText");
-    if(el) el.textContent=msg;
-  }
-  window.addEventListener("error",function(e){
-    show("測試頁錯誤："+(e.message||"unknown"));
-  });
-  window.addEventListener("unhandledrejection",function(e){
-    var m=e.reason && (e.reason.message||String(e.reason));
-    show("測試頁錯誤："+(m||"promise"));
-  });
-  document.addEventListener("DOMContentLoaded",function(){
-    setTimeout(function(){
-      var el=document.getElementById("liveText");
-      if(el && el.textContent==="載入資料中") el.textContent="測試頁 JS 尚未啟動";
-    },2500);
-  });
-})();
-</script>
 <script>
 (() => {
   const DATA_BASE = "https://raw.githubusercontent.com/yujinyuz/beybrew/main/data/";
@@ -3948,58 +3939,52 @@ const OFFICIAL_RECENT = [
 
   const IDENTIFY_GUIDES = {
     blade:{
-      title:"上蓋拍照建議",
-      desc:"最推薦白底、正上方、單一零件，盡量像官方零件圖的擺法。",
-      do:[
-        "正上方平拍，整個上蓋完整入鏡",
-        "白底或淺色底，一次只拍一個零件",
-        "圖案正面朝上，置中，留一點邊界",
-        "若有特殊配色，盡量拍清楚主色與外圈形狀"
-      ],
-      dont:[
-        "不要手拿著拍，避免手指遮到齒形",
-        "不要拍太斜、不要有陰影壓住圖案",
-        "不要跟其他零件混在一起",
-        "不要只拍局部"
-      ]
+      title:"上蓋 / Blade 位置說明",
+      desc:"BX / UX 的上蓋就是整顆最上面的主體大零件。下面才是 Ratchet 與 Bit。",
+      do:["正上方平拍，整個上蓋完整入鏡","白底或淺色底，一次只拍一個零件","圖案正面朝上，置中，留一點邊界","特殊配色盡量拍清楚主色與外圈形狀"],
+      dont:["不要手拿著遮住外圈","不要拍太斜","不要和其他零件混在一起","不要只拍局部"]
+    },
+    cxauto:{
+      title:"CX 上蓋位置說明（自動拆件）",
+      desc:"CX 上蓋會拆成 Lock Chip、Main Blade、Assist Blade 三件來比對；Ratchet 與 Bit 是另外兩層。",
+      do:["只拍 CX 上蓋本體，不要連 Ratchet / Bit 一起拍","正上方平拍，讓整個上蓋完整置中","背景乾淨","特殊混色要拍清楚中心與外圈"],
+      dont:["不要手拿著拍","不要只拍中心或只拍外圈","不要拍得太遠","不要和其他零件放一起"]
+    },
+    cxlock:{
+      title:"CX｜Lock Chip 紋章位置說明",
+      desc:"Lock Chip 就是 CX 最中央的圖案／紋章小件。",
+      do:["中央紋章置中","白底、正上方平拍","中心圖樣清楚不要反光","能拆件單拍更準"],
+      dont:["不要只拍到一半","不要太斜","不要被手遮住","不要背景太亂"]
+    },
+    cxmain:{
+      title:"CX｜Main Blade 主刃位置說明",
+      desc:"Main Blade 是 CX 上蓋裡最主要的刀刃骨架，決定大部分外形與碰撞感。",
+      do:["主刃完整入鏡","正上方平拍","盡量單拍零件","留一點邊界方便看外輪廓"],
+      dont:["不要只拍局部","不要嚴重傾斜","不要讓外圈被擋住","不要多件同時入鏡"]
+    },
+    cxassist:{
+      title:"CX｜Assist Blade 輔刃位置說明",
+      desc:"Assist Blade 是搭配 Main Blade 的輔助外圈／下層零件，最容易和主刃混在一起看。",
+      do:["能拆件就單獨拍輔刃","正上方平拍、完整入鏡","背景乾淨","拍清楚特殊配色"],
+      dont:["不要只拍中間圖樣","不要角度太斜","不要多件重疊","不要失焦"]
     },
     full:{
-      title:"整顆陀螺拍照建議",
-      desc:"先拍一張正上方，再補一張 45 度斜拍，最容易比整體造型與配色。",
-      do:[
-        "先拍正上方，整顆置中",
-        "再補一張 45 度斜角，方便看整體層次",
-        "背景乾淨，不要有其他陀螺入鏡",
-        "保持清楚對焦，外圈與軸心都要看得到"
-      ],
-      dont:[
-        "不要距離太遠，避免看不清 Blade 外型",
-        "不要只拍側面",
-        "不要在花紋太複雜的桌面拍",
-        "不要逆光"
-      ]
+      title:"整顆陀螺結構說明",
+      desc:"整顆模式會把上層模組、Ratchet、Bit 一起看；CX 的上層模組又可再拆成 Lock / Main / Assist。",
+      do:["先拍正上方，整顆置中","再補一張 45 度斜角","背景乾淨","外圈與底部都要清楚"],
+      dont:["不要距離太遠","不要只拍側面","不要背景太花","不要逆光"]
     },
     ratchet:{
-      title:"Ratchet 齒輪拍照建議",
-      desc:"Ratchet 最好拆下來單拍；正上方看外形／刃數，側面看高度。",
-      do:["拆下 Ratchet 單獨拍","正上方平拍，完整入鏡","背景單純、置中","能補側面照更好"],
+      title:"Ratchet 齒輪位置說明",
+      desc:"Ratchet 就是夾在上層與 Bit 中間的那一層，常見代碼像 1-60、3-60、5-70、9-60。",
+      do:["拆下 Ratchet 單獨拍","正上方看外形／刃數","補一張側面看高度","白底或淺底更好"],
       dont:["不要裝在整顆裡硬猜","不要和 Blade / Bit 疊在一起","不要拍太斜","不要只拍局部"]
     },
     bit:{
-      title:"軸心 / Bit 拍照建議",
-      desc:"Bit 最好至少拍 2 張：正面一張、側面一張。軸尖與輪廓越清楚越好。",
-      do:[
-        "靠近拍，軸尖與整體輪廓要清楚",
-        "最好補一張側面照",
-        "背景單純，讓軸身邊緣容易分辨",
-        "若是透明色或深色，補光一下更好"
-      ],
-      dont:[
-        "不要模糊或失焦",
-        "不要只拍一小截",
-        "不要跟 Ratchet 疊在一起",
-        "不要把手指擋住軸尖"
-      ]
+      title:"Bit 軸心位置說明",
+      desc:"Bit 是整顆最底下、直接接觸競技盤的零件，像 F、H、B、FB 都是 Bit 代碼。",
+      do:["靠近拍，軸尖與整體輪廓要清楚","最好補一張側面照","背景單純","透明色或深色可補光"],
+      dont:["不要模糊失焦","不要只拍一小截","不要跟 Ratchet 疊在一起","不要把手指擋住軸尖"]
     }
   };
 
@@ -4397,86 +4382,96 @@ const OFFICIAL_RECENT = [
     const checklistEl=$("#identifyGuideChecklist");
     $("#identifyGuideTitle").textContent=info.title;
     $("#identifyGuideDesc").textContent=info.desc;
-    cardsEl.classList.remove("guideExplodedLayout");
-    checklistEl.classList.remove("guideExplainGrid");
+    cardsEl.classList.add("guideExplodedLayout");
+    checklistEl.classList.add("guideExplainGrid");
 
-    if(mode==="ratchet"){
-      cardsEl.classList.add("guideExplodedLayout");
-      checklistEl.classList.add("guideExplainGrid");
-      cardsEl.innerHTML = `
-        <div class="guideExplainCard">
-          <div class="guideExplainTag bxux">BX / UX</div>
-          <h4>Ratchet 在哪裡？（3 件結構）</h4>
-          <div class="explodeStack">
-            <div class="explodePiece blade"><b>1｜上蓋 / Blade</b><small>最上層的大零件，像蒼龍神劍、魔導神杖通常就是指這一件。</small></div>
-            <div class="explodeArrow">↓</div>
-            <div class="explodePiece ratchet"><b>2｜Ratchet 齒輪</b><small>就在中間層，夾在 Blade 和 Bit 之間；常見代碼像 1-60、3-60、9-60。</small></div>
-            <div class="explodeArrow">↓</div>
-            <div class="explodePiece bit"><b>3｜Bit 軸心</b><small>最底下接觸競技盤的零件，例如 F、H、B、FB。</small></div>
-          </div>
-          <div class="partsGuideTip"><b>新手先這樣記：</b>BX / UX 就是 <b>上蓋 → Ratchet → Bit</b>。</div>
+    const guidePart=(slot)=>{
+      const arr=state.parts[slot]||[];
+      const prefs={
+        blade:["WIZARDROD","DRANSWORD","HELLSCYTHE"],
+        lock:["FOX","DRAN","CERBERUS","PEGASUS"],
+        main:["ARC","BLAST","BRAVE"],
+        assist:["R","D","H"],
+        ratchet:["3-60","1-60","9-60"],
+        bit:["F","H","B","FB"]
+      }[slot]||[];
+      const exact=prefs.map(k=>arr.find(p=>String(p.en||p.key).toUpperCase()===k)).find(Boolean);
+      return exact || arr.find(p=>findImage(p)) || arr[0] || null;
+    };
+
+    const piece=(slot,num,title,desc,focus=false)=>{
+      const p=guidePart(slot);
+      const img=p?findImage(p):"";
+      const example=p?displayNameForPart(p):"";
+      return `<div class="guideActualPiece ${focus?"isFocus":""}">
+        <div class="guideActualThumb">${img?`<img src="${esc(img)}" alt="${esc(example||title)}" loading="lazy">`:`<div class="fallback">${esc(title)}</div>`}</div>
+        <div class="guideActualText">
+          <b>${num}｜${title}</b>
+          <small>${desc}</small>
+          ${example?`<em>實際零件例：${esc(example)}</em>`:""}
         </div>
-        <div class="guideExplainCard">
-          <div class="guideExplainTag cx">CX</div>
-          <h4>Ratchet 在哪裡？（5 件結構）</h4>
-          <div class="explodeStack">
-            <div class="explodePiece lock"><b>1｜Lock Chip 紋章</b><small>中央小圓章／圖樣。</small></div>
-            <div class="explodeArrow">↓</div>
-            <div class="explodePiece main"><b>2｜Main Blade 主刃</b><small>決定主要外形與刀刃感。</small></div>
-            <div class="explodeArrow">↓</div>
-            <div class="explodePiece assist"><b>3｜Assist Blade 輔刃</b><small>搭配主刃的外圈零件。</small></div>
-            <div class="explodeArrow">↓</div>
-            <div class="explodePiece ratchet"><b>4｜Ratchet 齒輪</b><small>一樣在上蓋模組下面、Bit 上面；核對混裝時要獨立看這一層。</small></div>
-            <div class="explodeArrow">↓</div>
-            <div class="explodePiece bit"><b>5｜Bit 軸心</b><small>最底部控制跑法的零件。</small></div>
-          </div>
-          <div class="partsGuideTip"><b>CX 重點：</b>Ratchet 不是 Lock / Main / Assist，本身是另外一層。</div>
-        </div>`;
-      checklistEl.innerHTML = `
-        <div class="guideExplainCard">
-          <h4>Ratchet 是什麼？</h4>
-          <ul>
-            <li><b>位置：</b>中間層，夾在 <b>Blade 上蓋</b> 和 <b>Bit 軸心</b> 中間。</li>
-            <li><b>常見代碼：</b><b>1-60、3-60、5-70、9-60</b> 都屬於 Ratchet。</li>
-            <li><b>粗略理解：</b>前面的數字可先看成外形／刃數差異，後面的 <b>60 / 70 / 80</b> 可先看成高度系列。</li>
-            <li><b>在本站怎麼看：</b>看到這種數字格式，大多就是 Ratchet，不是商品編號，也不是 Bit 代碼。</li>
-          </ul>
-        </div>
-        <div class="guideExplainCard">
-          <h4>怎麼拍才好辨識？</h4>
-          <ul>${info.do.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
-          <h4 style="margin-top:10px">盡量避免</h4>
-          <ul>${info.dont.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
-        </div>`;
-      return;
+      </div>`;
+    };
+    const arrow=()=>'<div class="guideExplodedArrow">↓</div>';
+    const bxux=(focusSlot="")=>[
+      piece("blade","1","上蓋 / Blade","最上層的大零件，決定主要外形。",focusSlot==="blade"),
+      arrow(),
+      piece("ratchet","2","Ratchet 齒輪","中間層，常見代碼 1-60、3-60、9-60。",focusSlot==="ratchet"),
+      arrow(),
+      piece("bit","3","Bit 軸心","最底部接觸競技盤，例如 F、H、B、FB。",focusSlot==="bit")
+    ].join("");
+    const cx=(focusSlots=[])=>[
+      piece("lock","1","Lock Chip 紋章","最中央的圖案／紋章小件。",focusSlots.includes("lock")),
+      arrow(),
+      piece("main","2","Main Blade 主刃","CX 上蓋的主要刀刃骨架。",focusSlots.includes("main")),
+      arrow(),
+      piece("assist","3","Assist Blade 輔刃","搭配主刃的外圈／下層輔助零件。",focusSlots.includes("assist")),
+      arrow(),
+      piece("ratchet","4","Ratchet 齒輪","CX 上蓋模組下面的中間層。",focusSlots.includes("ratchet")),
+      arrow(),
+      piece("bit","5","Bit 軸心","最底部接觸競技盤。",focusSlots.includes("bit"))
+    ].join("");
+    const shootCards=()=>`
+      <div class="guideExplainCard"><h4>拍照時這樣做</h4><ul>${info.do.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
+      <div class="guideExplainCard"><h4>盡量避免</h4><ul>${info.dont.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`;
+
+    let cardsHTML="", checklistHTML="";
+    if(mode==="blade"){
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag bxux">BX / UX 實際零件示意</div><h4>你現在找的是最上層 Blade</h4>${bxux("blade")}<div class="partsGuideTip"><b>紅框就是目前核對的部位。</b>下面的 Ratchet、Bit 都是另外的零件。</div></div>
+        <div class="guideExplainCard"><div class="guideExplainTag cx">如果你拿的是 CX</div><h4>CX 上蓋不是單一零件</h4>${cx(["lock","main","assist"])}<div class="partsGuideTip">CX 上蓋要拆成 <b>Lock + Main + Assist</b> 三件看。</div></div>`;
+      checklistHTML=shootCards();
+    }else if(mode==="cxauto"){
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag cx">CX 實際零件示意</div><h4>這次會自動拆看上蓋 3 件</h4>${cx(["lock","main","assist"])}<div class="partsGuideTip">紅框的 <b>Lock / Main / Assist</b> 都會分開比對；Ratchet、Bit 不算 CX 上蓋三件。</div></div>
+        <div class="guideExplainCard"><h4>為什麼這樣比較準？</h4><ul><li>混裝最常發生在 CX 上蓋三件互換。</li><li>中心圖樣對 Lock Chip。</li><li>主要大刃形對 Main Blade。</li><li>外圈／輔助層對 Assist Blade。</li></ul></div>`;
+      checklistHTML=shootCards();
+    }else if(mode==="cxlock"){
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag cx">CX 實際零件示意</div><h4>紅框：Lock Chip 紋章</h4>${cx(["lock"])}<div class="partsGuideTip">你現在只核對 <b>最中央圖樣那一件</b>。</div></div>
+        <div class="guideExplainCard"><h4>容易搞混</h4><ul><li>Lock Chip 不是整個外圈。</li><li>Main Blade 才是主要刀刃。</li><li>Assist Blade 是輔助外圈／下層。</li></ul></div>`;
+      checklistHTML=shootCards();
+    }else if(mode==="cxmain"){
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag cx">CX 實際零件示意</div><h4>紅框：Main Blade 主刃</h4>${cx(["main"])}<div class="partsGuideTip">你現在核對的是 <b>決定主要外形的刀刃骨架</b>，不是中央 Lock Chip。</div></div>
+        <div class="guideExplainCard"><h4>Main Blade 怎麼看？</h4><ul><li>先看大外形與主要碰撞邊。</li><li>中心圖樣不算 Main Blade。</li><li>最外層輔助圈可能是 Assist Blade。</li></ul></div>`;
+      checklistHTML=shootCards();
+    }else if(mode==="cxassist"){
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag cx">CX 實際零件示意</div><h4>紅框：Assist Blade 輔刃</h4>${cx(["assist"])}<div class="partsGuideTip">你現在核對的是 <b>包在主刃外側／下側的輔助層</b>。</div></div>
+        <div class="guideExplainCard"><h4>Assist 最容易看錯哪裡？</h4><ul><li>不是中央 Lock Chip。</li><li>不是整個 Main Blade 主骨架。</li><li>它通常像補強圈、外圈或輔助接觸層。</li></ul></div>`;
+      checklistHTML=shootCards();
+    }else if(mode==="ratchet"){
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag bxux">BX / UX 實際零件示意</div><h4>紅框：中間的 Ratchet</h4>${bxux("ratchet")}</div>
+        <div class="guideExplainCard"><div class="guideExplainTag cx">CX 實際零件示意</div><h4>紅框：CX 也是這一層</h4>${cx(["ratchet"])}<div class="partsGuideTip">Ratchet 不是 Lock / Main / Assist，本身是另外一層。</div></div>`;
+      checklistHTML=`<div class="guideExplainCard"><h4>Ratchet 代碼怎麼看？</h4><ul><li><b>1-60、3-60、5-70、9-60</b> 都是 Ratchet。</li><li>前面的數字先粗略看成外形／刃數差異。</li><li>後面的 60 / 70 / 80 先理解成高度系列。</li></ul></div>${shootCards()}`;
+    }else if(mode==="bit"){
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag bxux">BX / UX 實際零件示意</div><h4>紅框：最底部 Bit</h4>${bxux("bit")}</div>
+        <div class="guideExplainCard"><div class="guideExplainTag cx">CX 實際零件示意</div><h4>紅框：CX 最底部也一樣是 Bit</h4>${cx(["bit"])}</div>`;
+      checklistHTML=`<div class="guideExplainCard"><h4>Bit 新手辨識重點</h4><ul><li>先看最底端軸尖形狀。</li><li>再看側面高低、粗細與外擴形。</li><li>F / H / B / FB 這種短代碼通常就是 Bit。</li></ul></div>${shootCards()}`;
+    }else{
+      cardsHTML=`<div class="guideExplainCard"><div class="guideExplainTag bxux">BX / UX 整顆結構</div><h4>3 件組成</h4>${bxux("")}</div>
+        <div class="guideExplainCard"><div class="guideExplainTag cx">CX 整顆結構</div><h4>5 件組成</h4>${cx([])}</div>`;
+      checklistHTML=shootCards();
     }
 
-    const obj = mode==="bit" ? '<div class="guideObjectBit"></div>' : mode==="full" ? '<div class="guideObjectWhole"></div>' : '<div class="guideObjectCircle"></div>';
-    cardsEl.innerHTML = `
-      <div class="guideCard">
-        <div class="guideShot goodExample">${obj}</div>
-        <div class="guideLabel"><span class="ok">✅ 正確示範</span><span>白底・置中・平拍</span></div>
-        <div class="guideNote">物件放正中央，外圈完整，盡量讓陀螺佔畫面中央約 60～75%。</div>
-      </div>
-      <div class="guideCard">
-        <div class="guideShot clutterExample">${obj}<div class="guideMulti1"></div><div class="guideMulti2"></div><div class="guideCross">✕</div></div>
-        <div class="guideLabel"><span class="ng">❌ 錯誤示範</span><span>背景亂 / 多個物件</span></div>
-        <div class="guideNote">杯子、桌面花紋、其他陀螺都會把顏色特徵混進去。</div>
-      </div>
-      <div class="guideCard">
-        <div class="guideShot angleExample">${obj}<div class="guideHand"></div><div class="guideCross">✕</div></div>
-        <div class="guideLabel"><span class="ng">❌ 錯誤示範</span><span>歪斜 / 手遮住 / 偏離中央</span></div>
-        <div class="guideNote">角度太斜或手指遮到外圈，會讓輪廓判斷失真。</div>
-      </div>`;
-    checklistEl.innerHTML = `
-      <div class="guideChecklistBox">
-        <h4>建議這樣拍</h4>
-        <ul>${info.do.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
-      </div>
-      <div class="guideChecklistBox">
-        <h4>盡量避免</h4>
-        <ul>${info.dont.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
-      </div>`;
+    cardsEl.innerHTML=cardsHTML;
+    checklistEl.innerHTML=checklistHTML;
   }
 
   let identifyPreviewDataUrl="";
