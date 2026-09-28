@@ -711,7 +711,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V22.1</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V22.2</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1660,7 +1660,7 @@ const OFFICIAL_RECENT = [
     }catch(e){ return fallback; }
   }
 
-  async function fetchWithTimeout(url,options={},timeoutMs=6500){
+  async function fetchWithTimeout(url,options={},timeoutMs=4000){
     const ctl=new AbortController();
     const timer=setTimeout(()=>ctl.abort(),timeoutMs);
     try{
@@ -1803,7 +1803,7 @@ const OFFICIAL_RECENT = [
     let lastErr=null;
     for(const url of urls){
       try{
-        const res=await fetchWithTimeout(url,{cache:"no-store"},6500);
+        const res=await fetchWithTimeout(url,{cache:"no-store"},4000);
         if(!res.ok) throw new Error(file+" "+res.status);
         return await res.json();
       }catch(e){ lastErr=e; }
@@ -1813,7 +1813,7 @@ const OFFICIAL_RECENT = [
 
   async function loadImageDir(dir){
     try{
-      const res=await fetchWithTimeout(IMG_API+dir,{headers:{"Accept":"application/vnd.github+json"}},6500);
+      const res=await fetchWithTimeout(IMG_API+dir,{headers:{"Accept":"application/vnd.github+json"}},4000);
       if(!res.ok) throw new Error("img "+dir);
       const arr=await res.json();
       const map={};
@@ -4718,40 +4718,66 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
   }
 
   async function init(){
-    let fallbackUsed=false;
-    const jobs=Object.entries(FILES).map(async([slot,file])=>{
-      try{
-        state.raw[slot]=await loadJson(file);
-        state.parts[slot]=groupParts(state.raw[slot],slot);
-        if(!state.parts[slot]?.length) throw new Error("empty "+slot);
-      }catch(err){
-        console.warn("Using fallback list for",slot,err);
-        const fb=fallbackParts(slot);
-        state.parts[slot]=fb;
-        fallbackUsed=fallbackUsed || fb.length>0;
-      }
-    });
-    const imgs=[
-      loadImageDir("Blade").then(x=>state.images.Blade=x).catch(()=>{}),
-      loadImageDir("Ratchet").then(x=>state.images.Ratchet=x).catch(()=>{}),
-      loadImageDir("Bit").then(x=>state.images.Bit=x).catch(()=>{}),
-      loadImageDir("All").then(x=>state.images.All=x).catch(()=>{})
-    ];
-    await Promise.allSettled([...jobs,...imgs]);
+    // 先讓網站立即可用；外部資料改成背景同步，避免 iPhone 卡在「載入資料中」。
+    let fallbackUsed=true;
 
-    // Absolute guarantee for the two catalogs the user must be able to browse.
-    if(!state.parts.ratchet?.length){ state.parts.ratchet=fallbackParts("ratchet"); fallbackUsed=true; }
-    if(!state.parts.bit?.length){ state.parts.bit=fallbackParts("bit"); fallbackUsed=true; }
-    if(!state.parts.blade?.length){ state.parts.blade=fallbackParts("blade"); fallbackUsed=true; }
-
+    if(!state.parts.blade?.length) state.parts.blade=fallbackParts("blade");
+    if(!state.parts.ratchet?.length) state.parts.ratchet=fallbackParts("ratchet");
+    if(!state.parts.bit?.length) state.parts.bit=fallbackParts("bit");
     ensureSpecialParts();
     buildStockBeys();
-    $("#liveDot").className=fallbackUsed?"dot":"dot ok";
-    $("#liveText").textContent=fallbackUsed?"已載入（部分使用內建清單）":"最新資料已載入";
+
+    const liveText=$("#liveText"), liveDot=$("#liveDot");
+    if(liveText) liveText.textContent="基本資料已載入・背景同步中";
+    if(liveDot) liveDot.className="dot ok";
+
     renderAll();
     renderGarage();
     renderIdentifyGuide();
     resetIdentifyPage();
+    updateSecondShotVisibility();
+
+    let finished=false;
+    const jobs=Object.entries(FILES).map(async([slot,file])=>{
+      try{
+        state.raw[slot]=await loadJson(file);
+        const grouped=groupParts(state.raw[slot],slot);
+        if(grouped?.length) state.parts[slot]=grouped;
+      }catch(err){
+        console.warn("Using fallback list for",slot,err);
+      }
+    });
+    const imgs=[
+      loadImageDir("Blade").then(x=>{ if(x&&Object.keys(x).length) state.images.Blade=x; }).catch(()=>{}),
+      loadImageDir("Ratchet").then(x=>{ if(x&&Object.keys(x).length) state.images.Ratchet=x; }).catch(()=>{}),
+      loadImageDir("Bit").then(x=>{ if(x&&Object.keys(x).length) state.images.Bit=x; }).catch(()=>{}),
+      loadImageDir("All").then(x=>{ if(x&&Object.keys(x).length) state.images.All=x; }).catch(()=>{})
+    ];
+
+    Promise.allSettled([...jobs,...imgs]).then(()=>{
+      finished=true;
+      if(!state.parts.ratchet?.length) state.parts.ratchet=fallbackParts("ratchet");
+      if(!state.parts.bit?.length) state.parts.bit=fallbackParts("bit");
+      if(!state.parts.blade?.length) state.parts.blade=fallbackParts("blade");
+      ensureSpecialParts();
+      buildStockBeys();
+      if(liveDot) liveDot.className="dot ok";
+      if(liveText) liveText.textContent="最新資料已載入";
+      renderAll();
+      renderGarage();
+      renderIdentifyGuide();
+      updateSecondShotVisibility();
+    }).catch(err=>{
+      console.warn("background sync failed",err);
+      if(liveText) liveText.textContent="基本資料可用・外部資料稍後再試";
+    });
+
+    setTimeout(()=>{
+      if(!finished && liveText){
+        liveText.textContent="基本資料可用・背景同步稍慢";
+        if(liveDot) liveDot.className="dot ok";
+      }
+    },5500);
   }
 
   $("#navBuilder").addEventListener("click",()=>setPage("builder"));
