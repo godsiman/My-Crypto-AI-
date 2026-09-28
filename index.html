@@ -605,6 +605,7 @@
       .identifyControls,.identifyUploadRow,.identifyGuideChecklist,.identifyGuideCards{grid-template-columns:1fr}
     }
 
+
     .identifyPreview{position:relative;place-items:center!important;padding:8px}
     .identifyPreview img{
       display:block!important;
@@ -3797,6 +3798,7 @@ const OFFICIAL_RECENT = [
     return (state.parts.bit||[]).map(p=>({part:p,id:partId(p),code:p.en,name:p.zh||p.en,image:partImage(p),sources:(p.sources||[])}));
   }
 
+
   function identifyModeValue(){ return $("#identifyMode")?.value || "blade"; }
 
   function loadVisualImage(src){
@@ -3893,7 +3895,7 @@ const OFFICIAL_RECENT = [
         const ang=(Math.atan2(dy,dx)+Math.PI)/(Math.PI*2);
         angular[Math.min(11,Math.floor(ang*12))]+=centerWeight*(.3+.7*ss);
 
-        used+=centerWeight; meanR+=r*centerWeight;meanG+=g*centerWeight;meanB+=b*centerWeigight;
+        used+=centerWeight; meanR+=r*centerWeight;meanG+=g*centerWeight;meanB+=b*centerWeight;
       }
     }
     for(let ring=0;ring<5;ring++){
@@ -4349,4 +4351,3 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
 </script>
 </body>
 </html>
-<!-- pages-redeploy -->
