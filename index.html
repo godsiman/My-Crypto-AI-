@@ -696,7 +696,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V20</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V20.1</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1607,24 +1607,48 @@ const OFFICIAL_RECENT = [
   ...SPECIAL_SETS
 ];
 
+  function safeStoreGet(key,fallback=null){
+    try{
+      const v=window.localStorage.getItem(key);
+      return v==null ? fallback : v;
+    }catch(e){
+      return fallback;
+    }
+  }
+
+  function safeJsonArray(key){
+    try{
+      const v=JSON.parse(safeStoreGet(key,"[]"));
+      return Array.isArray(v) ? v : [];
+    }catch(e){
+      return [];
+    }
+  }
+
+  function safeStoreSet(key,value){
+    try{ window.localStorage.setItem(key,value); return true; }
+    catch(e){ return false; }
+  }
+
   const state = {
     mode:"classic", slot:"blade", raw:{}, parts:{}, images:{Blade:{},Ratchet:{},Bit:{},All:{}},
     selected:{blade:null,ratchet:null,bit:null,lock:null,main:null,assist:null,metal:null,over:null},
     stockBeys:[], stockSelected:null, stockSetBeyId:null, stockOriginalSelection:{}, releaseFilter:"all",
-    owned:new Set(JSON.parse(localStorage.getItem("beyx-owned") || "[]")),
-    saved:JSON.parse(localStorage.getItem("beyx-saved") || "[]"),
+    owned:new Set(safeJsonArray("beyx-owned")),
+    saved:safeJsonArray("beyx-saved"),
     liveMeta:null,
-    liveMetaWindow:localStorage.getItem("beyx-meta-window") || "3m",
+    liveMetaWindow:safeStoreGet("beyx-meta-window","3m") || "3m",
     liveRatchetUsage:{},
     liveBitUsage:{},
     metaRefreshing:false,
     recoTab:"global",
     recoShowAll:false,
-    garageItems:JSON.parse(localStorage.getItem("beyx-garage") || "[]"),
+    garageItems:safeJsonArray("beyx-garage"),
     garageResults:[]
   };
 
   const $ = s => document.querySelector(s);
+  if($("#liveText")) $("#liveText").textContent="程式啟動中";
   const strip = s => (s||"").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
   const norm = s => strip(s)
     .normalize("NFKC")
@@ -1789,7 +1813,7 @@ const OFFICIAL_RECENT = [
   function owned(p){ return p && state.owned.has(partId(p)); }
 
   function saveOwned(){
-    localStorage.setItem("beyx-owned",JSON.stringify([...state.owned]));
+    safeStoreSet("beyx-owned",JSON.stringify([...state.owned]));
   }
 
   function imgTag(p, cls=""){
@@ -2994,7 +3018,7 @@ const OFFICIAL_RECENT = [
       setMode(state.mode); renderAll(); toast("已載入配裝");
     }));
     box.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{
-      state.saved.splice(Number(b.dataset.del),1); localStorage.setItem("beyx-saved",JSON.stringify(state.saved)); renderSaved();
+      state.saved.splice(Number(b.dataset.del),1); safeStoreSet("beyx-saved",JSON.stringify(state.saved)); renderSaved();
     }));
   }
 
@@ -3148,7 +3172,7 @@ const OFFICIAL_RECENT = [
         ratchets:state.liveRatchetUsage,
         bits:state.liveBitUsage
       }));
-      localStorage.setItem("beyx-meta-window",state.liveMetaWindow);
+      safeStoreSet("beyx-meta-window",state.liveMetaWindow);
     }catch(e){}
   }
 
@@ -3585,7 +3609,7 @@ const OFFICIAL_RECENT = [
 
   function garageEntryById(id){ return garageCatalogEntries().find(x=>x.id===id)||null; }
 
-  function garageSave(){ localStorage.setItem("beyx-garage",JSON.stringify(state.garageItems)); }
+  function garageSave(){ safeStoreSet("beyx-garage",JSON.stringify(state.garageItems)); }
 
   function garageAddSelected(){
     const sel=$("#garageBeySelect");
@@ -4456,6 +4480,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
   }
 
   async function init(){
+    if($("#liveText")) $("#liveText").textContent="正在載入資料";
     let fallbackUsed=false;
     const jobs=Object.entries(FILES).map(async([slot,file])=>{
       try{
@@ -4535,7 +4560,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
 
   $("#metaWindow").addEventListener("change",e=>{
     state.liveMetaWindow=e.target.value;
-    localStorage.setItem("beyx-meta-window",state.liveMetaWindow);
+    safeStoreSet("beyx-meta-window",state.liveMetaWindow);
     const info=metaWindowInfo(state.liveMetaWindow);
     $("#metaSourceLink").href=info.url;
     if(state.liveMeta?.window===state.liveMetaWindow){
@@ -4568,7 +4593,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
     const name=comboLabel(); if(!name){ toast("請先選擇零件"); return; }
     const keys={}; for(const s of activeSlots()) if(state.selected[s]) keys[s]=state.selected[s].key;
     state.saved.unshift({name,mode:state.mode,keys,date:new Date().toLocaleDateString("zh-TW")});
-    state.saved=state.saved.slice(0,30); localStorage.setItem("beyx-saved",JSON.stringify(state.saved)); renderSaved(); toast("已儲存配裝");
+    state.saved=state.saved.slice(0,30); safeStoreSet("beyx-saved",JSON.stringify(state.saved)); renderSaved(); toast("已儲存配裝");
   });
 
   const hadCachedMeta=loadCachedLiveMeta();
