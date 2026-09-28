@@ -4024,19 +4024,19 @@ const OFFICIAL_RECENT = [
     const obj = mode==="bit" ? '<div class="guideObjectBit"></div>' : mode==="full" ? '<div class="guideObjectWhole"></div>' : '<div class="guideObjectCircle"></div>';
     $("#identifyGuideCards").innerHTML = `
       <div class="guideCard">
-        <div class="guideShot">${obj}</div>
-        <div class="guideLabel"><span class="ok">✅ 正確示範</span><span>置中・清楚・單一物件</span></div>
-        <div class="guideNote">盡量像官方商品 / 零件圖：平拍、白底、完整入鏡。</div>
+        <div class="guideShot goodExample">${obj}</div>
+        <div class="guideLabel"><span class="ok">✅ 正確示範</span><span>白底・置中・平拍</span></div>
+        <div class="guideNote">物件放正中央，外圈完整，盡量讓陀螺佔畫面中央約 60～75%。</div>
       </div>
       <div class="guideCard">
-        <div class="guideShot bad">${obj}<div class="guideCross">✕</div></div>
+        <div class="guideShot clutterExample">${obj}<div class="guideMulti1"></div><div class="guideMulti2"></div><div class="guideCross">✕</div></div>
         <div class="guideLabel"><span class="ng">❌ 錯誤示範</span><span>背景亂 / 多個物件</span></div>
-        <div class="guideNote">背景太亂、同時拍多顆、距離太遠，都會增加比對難度。</div>
+        <div class="guideNote">杯子、桌面花紋、其他陀螺都會把顏色特徵混進去。</div>
       </div>
       <div class="guideCard">
-        <div class="guideShot bad">${obj}<div class="guideCross">✕</div></div>
-        <div class="guideLabel"><span class="ng">❌ 錯誤示範</span><span>角度太斜 / 被遮住</span></div>
-        <div class="guideNote">手拿遮住、逆光、失焦、只拍局部，都容易讓核對失準。</div>
+        <div class="guideShot angleExample">${obj}<div class="guideHand"></div><div class="guideCross">✕</div></div>
+        <div class="guideLabel"><span class="ng">❌ 錯誤示範</span><span>歪斜 / 手遮住 / 偏離中央</span></div>
+        <div class="guideNote">角度太斜或手指遮到外圈，會讓輪廓判斷失真。</div>
       </div>`;
     $("#identifyGuideChecklist").innerHTML = `
       <div class="guideChecklistBox">
@@ -4049,11 +4049,20 @@ const OFFICIAL_RECENT = [
       </div>`;
   }
 
+  let identifyPreviewDataUrl="";
   function updateIdentifyPreview(file){
     const box=$("#identifyPreview");
-    if(!file){ box.innerHTML='<div class="identifyPreviewEmpty">上傳後會顯示預覽</div>'; return; }
+    box.classList.toggle("bitMode",identifyModeValue()==="bit");
+    if(!file){
+      identifyPreviewDataUrl="";
+      box.innerHTML='<div class="identifyPreviewEmpty">上傳後會顯示預覽</div>';
+      return;
+    }
     const reader=new FileReader();
-    reader.onload=()=>{ box.innerHTML=`<img src="${reader.result}" alt="preview">`; };
+    reader.onload=()=>{
+      identifyPreviewDataUrl=String(reader.result||"");
+      box.innerHTML=`<img src="${identifyPreviewDataUrl}" alt="你上傳的照片">`;
+    };
     reader.readAsDataURL(file);
   }
 
