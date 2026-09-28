@@ -4091,12 +4091,27 @@ const OFFICIAL_RECENT = [
 
   function identifyResultCardProduct(entry,index){
     const parts=Object.values(entry.parts||{}).filter(Boolean);
+    const sim=entry.match?.sim||{total:0,color:0,shape:0};
+    const total=pct(entry.score||sim.total), color=pct(sim.color), shape=pct(sim.shape);
+    const scoreClass=total>=72?"":total>=55?"low":"verylow";
+    const candidateImg=entry.match?.ref?.url || entry.image || "";
+    const colorMsg=color<55
+      ? `<div class="identifyColorWarn">⚠️ 顏色相似度只有 ${color}%：這個候選配色可能不對，我把它保留只是讓你人工排除。</div>`
+      : `<div class="identifyColorGood">✓ 顏色相似度 ${color}%</div>`;
     return `<article class="identifyCard">
-      <div class="identifyTop"><span class="metaProductTag">${esc(entry.code||"商品")}</span><span class="identifyTypeTag">${esc(entry.subtitle||"商品")}</span></div>
-      <div class="identifyImg">${entry.image?`<img src="${esc(entry.image)}" alt="${esc(entry.name)}">`:""}</div>
+      <div class="identifyTop">
+        <span class="metaProductTag">${esc(entry.code||"商品")}</span>
+        <div class="identifyScore ${scoreClass}"><strong>${total}%</strong><span class="scoreChip">顏色 ${color}%</span><span class="scoreChip">輪廓 ${shape}%</span></div>
+      </div>
+      <div class="identifyCompare">
+        <div class="identifyComparePane"><label>你拍的</label><div class="identifyCompareImg">${identifyPreviewDataUrl?`<img src="${identifyPreviewDataUrl}" alt="你的照片">`:""}</div></div>
+        <div class="identifyComparePane"><label>${esc(entry.match?.ref?.label||"官方候選")}</label><div class="identifyCompareImg">${candidateImg?`<img src="${esc(candidateImg)}" alt="${esc(entry.name)}">`:""}</div></div>
+      </div>
+      ${colorMsg}
       <div class="identifyName">${esc(entry.name)}</div>
       <div class="identifySub">${esc(entry.primary ? "主上蓋：" + displayNameForPart(entry.primary) : "整顆 / 套裝候選")}</div>
-      <div class="identifyParts">${parts.slice(0,5).map(p=>`<span>${esc(displayNameForPart(p))}</span>`).join("")}</div>
+      <div class="identifyPartStrip">${parts.slice(0,6).map(partMiniHtml).join("")}</div>
+      <div class="identifyParts">${parts.slice(0,7).map(p=>`<span>${esc(displayNameForPart(p))}</span>`).join("")}</div>
       <div class="identifyActions">
         <button class="identifyPrimary" type="button" data-identify-load="${index}">載入完整整顆</button>
         <button class="identifySecondary" type="button" data-identify-add="${index}">加入我的陀螺</button>
@@ -4106,47 +4121,93 @@ const OFFICIAL_RECENT = [
 
   function identifyResultCardBit(entry,index){
     const p=entry.part;
+    const sim=entry.match?.sim||{total:0,color:0,shape:0};
+    const total=pct(entry.score||sim.total),color=pct(sim.color),shape=pct(sim.shape);
     return `<article class="identifyCard">
-      <div class="identifyTop"><span class="metaProductTag">${esc(entry.code||"Bit")}</span><span class="identifyTypeTag">${esc(typeLabelZh(p.type)||"")}</span></div>
-      <div class="identifyImg">${entry.image?`<img src="${esc(entry.image)}" alt="${esc(entry.name)}">`:""}</div>
+      <div class="identifyTop"><span class="metaProductTag">${esc(entry.code||"Bit")}</span><div class="identifyScore ${total<55?"low":""}"><strong>${total}%</strong><span class="scoreChip">顏色 ${color}%</span><span class="scoreChip">輪廓 ${shape}%</span></div></div>
+      <div class="identifyCompare">
+        <div class="identifyComparePane"><label>你拍的</label><div class="identifyCompareImg">${identifyPreviewDataUrl?`<img src="${identifyPreviewDataUrl}" alt="你的照片">`:""}</div></div>
+        <div class="identifyComparePane"><label>官方 Bit 圖</label><div class="identifyCompareImg">${entry.image?`<img src="${esc(entry.image)}" alt="${esc(entry.name)}">`:""}</div></div>
+      </div>
       <div class="identifyName">${esc(entry.name)}</div>
-      <div class="identifySub">${esc("Bit 代碼：" + entry.code + "｜可點收錄商品做整顆核對")}</div>
+      <div class="identifySub">${esc("Bit 代碼：" + entry.code + "｜點收錄商品可開完整整顆核對")}</div>
       <div class="identifySourceList">${(entry.sources||[]).slice(0,6).map((s,i)=>{
         const target=findSourceProductTarget ? findSourceProductTarget(p,s) : null;
         return target ? `<button type="button" class="identifySourceBtn" data-bit-source="${index}|${i}">${esc(s)}</button>` : `<span class="identifyTypeTag">${esc(s)}</span>`;
       }).join("")}</div>
-      <div class="identifySub">${esc((entry.sources||[]).length ? "上面是官方收錄商品 / 常見來源，點一下會打開完整整顆。" : "目前此零件尚未收錄來源商品清單")}</div>
     </article>`;
   }
 
-  function performIdentifySearch(){
+  async function performIdentifySearch(){
     const mode=identifyModeValue();
     const hint=$("#identifyHint").value.trim();
-    const rows=identifySearchEntries(mode,hint);
+    const file=$("#identifyPhoto").files?.[0] || null;
     const box=$("#identifyResults");
-    const noAiMsg = $("#identifyPhoto").files?.length ? "（已收到照片預覽；本版先做核對流程，尚未自動辨識影像內容）" : "";
-    $("#identifyResultIntro").textContent = `這裡會列出候選。${noAiMsg} 若你再輸入一點提示字，通常會更準。`;
-    if(!rows.length){
-      box.innerHTML = '<div class="identifyHintBox">目前沒有找到候選。可以試著改用商品編號、中文名、英文名、顏色、角色名，或換另一種拍攝類型。</div>';
+
+    if(!file){
+      const rows=identifySearchEntries(mode,hint).slice(0,8);
+      $("#identifyResultIntro").textContent="目前沒有照片，所以只能用你輸入的提示字搜尋；要做真正影像比對請先上傳照片。";
+      if(!rows.length){
+        box.innerHTML='<div class="identifyHintBox">請先上傳照片，或輸入商品編號／中文名／英文名再搜尋。</div>';
+        return;
+      }
+      box.innerHTML='<div class="identifyConfidenceNote">⚠️ 目前是「文字搜尋」，不是影像辨識。上傳照片後才會計算顏色與輪廓相似度。</div>'+
+        rows.map((row,i)=>mode==="bit"
+          ? `<article class="identifyCard"><div class="identifyName">${esc(row.name)}</div><div class="identifySub">${esc(row.code)}</div></article>`
+          : `<article class="identifyCard"><div class="identifyTop"><span class="metaProductTag">${esc(row.code||"")}</span></div><div class="identifyImg">${row.image?`<img src="${esc(row.image)}" alt="${esc(row.name)}">`:""}</div><div class="identifyName">${esc(row.name)}</div></article>`
+        ).join("");
       return;
     }
-    box.innerHTML = rows.map((row,i)=> mode==="bit" ? identifyResultCardBit(row,i) : identifyResultCardProduct(row,i)).join("");
-    if(mode==="bit"){
-      box.querySelectorAll("[data-bit-source]").forEach(btn=>{
-        btn.addEventListener("click",()=>{
-          const [rowIdx,srcIdx]=btn.dataset.bitSource.split("|").map(Number);
-          const row=rows[rowIdx];
-          const source=row?.sources?.[srcIdx];
-          if(source && typeof openSourceProduct==="function") openSourceProduct(row.part,source);
+
+    const btn=$("#identifySearch");
+    btn.disabled=true;btn.textContent="比對中…";
+    $("#identifyResultIntro").textContent="正在讀取你的照片，並和官方候選圖做真正的顏色＋輪廓比對。第一次會較慢，因為要載入官方圖。";
+    box.innerHTML='<div class="identifyProgress"><b>正在比對官方圖…</b><div class="identifyProgressBar"><i id="identifyProgressBar"></i></div><small id="identifyProgressText">準備中</small></div>';
+
+    const onProgress=(done,total)=>{
+      const bar=$("#identifyProgressBar"),t=$("#identifyProgressText");
+      if(bar) bar.style.width=Math.round(done/Math.max(1,total)*100)+"%";
+      if(t) t.textContent=`${done} / ${total}`;
+    };
+
+    try{
+      let rows;
+      if(mode==="bit") rows=await visualMatchBits(file,hint,onProgress);
+      else rows=await visualMatchProducts(file,mode,hint,onProgress);
+
+      // Only show a short ranked list. If confidence is weak, say so instead of pretending.
+      const top=rows.slice(0,6);
+      const best=top[0]?.score||0;
+      $("#identifyResultIntro").textContent=`已完成實際影像比對。最高相似度 ${pct(best)}%；候選依照片相似度排序，顏色不合的會被明顯降分。`;
+      if(!top.length){
+        box.innerHTML='<div class="identifyHintBox">官方圖載入失敗或沒有可比對候選。請換成白底、置中的照片再試一次。</div>';
+        return;
+      }
+      box.innerHTML=(best<.50?'<div class="identifyConfidenceNote">⚠️ 這張照片的最高相似度偏低，我不會把第一名當成確定答案。建議改成白底、正上方、物件置中後重拍。</div>':"")+
+        top.map((row,i)=>mode==="bit" ? identifyResultCardBit(row,i) : identifyResultCardProduct(row,i)).join("");
+
+      if(mode==="bit"){
+        box.querySelectorAll("[data-bit-source]").forEach(btn=>{
+          btn.addEventListener("click",()=>{
+            const [rowIdx,srcIdx]=btn.dataset.bitSource.split("|").map(Number);
+            const row=top[rowIdx],source=row?.sources?.[srcIdx];
+            if(source && typeof openSourceProduct==="function") openSourceProduct(row.part,source);
+          });
         });
-      });
-    }else{
-      box.querySelectorAll("[data-identify-load]").forEach(btn=>{
-        btn.addEventListener("click",()=>rows[Number(btn.dataset.identifyLoad)]?.load?.());
-      });
-      box.querySelectorAll("[data-identify-add]").forEach(btn=>{
-        btn.addEventListener("click",()=>garageAddById(rows[Number(btn.dataset.identifyAdd)]?.addId));
-      });
+      }else{
+        box.querySelectorAll("[data-identify-load]").forEach(btn=>{
+          btn.addEventListener("click",()=>top[Number(btn.dataset.identifyLoad)]?.load?.());
+        });
+        box.querySelectorAll("[data-identify-add]").forEach(btn=>{
+          btn.addEventListener("click",()=>garageAddById(top[Number(btn.dataset.identifyAdd)]?.addId));
+        });
+      }
+    }catch(err){
+      console.error(err);
+      $("#identifyResultIntro").textContent="影像比對沒有完成。";
+      box.innerHTML='<div class="identifyHintBox">這次照片分析失敗。請重新整理後再試；若仍失敗，換一張白底、正上方照片。</div>';
+    }finally{
+      btn.disabled=false;btn.textContent="🔎 開始核對";
     }
   }
 
