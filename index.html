@@ -711,7 +711,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V22</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V22.1</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1638,20 +1638,51 @@ const OFFICIAL_RECENT = [
   ...SPECIAL_SETS
 ];
 
+  function safeStoreGet(key,fallback=null){
+    try{
+      const v=window.localStorage?.getItem(key);
+      return v===null || v===undefined ? fallback : v;
+    }catch(e){
+      console.warn("localStorage unavailable",e);
+      return fallback;
+    }
+  }
+
+  function safeStoreSet(key,value){
+    try{ window.localStorage?.setItem(key,value); return true; }
+    catch(e){ console.warn("localStorage write unavailable",e); return false; }
+  }
+
+  function safeJsonGet(key,fallback){
+    try{
+      const raw=safeStoreGet(key,null);
+      return raw==null ? fallback : JSON.parse(raw);
+    }catch(e){ return fallback; }
+  }
+
+  async function fetchWithTimeout(url,options={},timeoutMs=6500){
+    const ctl=new AbortController();
+    const timer=setTimeout(()=>ctl.abort(),timeoutMs);
+    try{
+      const opts={...options,signal:options.signal || ctl.signal};
+      return await fetch(url,opts);
+    }finally{ clearTimeout(timer); }
+  }
+
   const state = {
     mode:"classic", slot:"blade", raw:{}, parts:{}, images:{Blade:{},Ratchet:{},Bit:{},All:{}},
     selected:{blade:null,ratchet:null,bit:null,lock:null,main:null,assist:null,metal:null,over:null},
     stockBeys:[], stockSelected:null, stockSetBeyId:null, stockOriginalSelection:{}, releaseFilter:"all",
-    owned:new Set(JSON.parse(localStorage.getItem("beyx-owned") || "[]")),
-    saved:JSON.parse(localStorage.getItem("beyx-saved") || "[]"),
+    owned:new Set(safeJsonGet("beyx-owned",[])),
+    saved:safeJsonGet("beyx-saved",[]),
     liveMeta:null,
-    liveMetaWindow:localStorage.getItem("beyx-meta-window") || "3m",
+    liveMetaWindow:safeStoreGet("beyx-meta-window","3m") || "3m",
     liveRatchetUsage:{},
     liveBitUsage:{},
     metaRefreshing:false,
     recoTab:"global",
     recoShowAll:false,
-    garageItems:JSON.parse(localStorage.getItem("beyx-garage") || "[]"),
+    garageItems:safeJsonGet("beyx-garage",[]),
     garageResults:[]
   };
 
@@ -1772,7 +1803,7 @@ const OFFICIAL_RECENT = [
     let lastErr=null;
     for(const url of urls){
       try{
-        const res=await fetch(url,{cache:"no-store"});
+        const res=await fetchWithTimeout(url,{cache:"no-store"},6500);
         if(!res.ok) throw new Error(file+" "+res.status);
         return await res.json();
       }catch(e){ lastErr=e; }
@@ -1782,7 +1813,7 @@ const OFFICIAL_RECENT = [
 
   async function loadImageDir(dir){
     try{
-      const res=await fetch(IMG_API+dir,{headers:{"Accept":"application/vnd.github+json"}});
+      const res=await fetchWithTimeout(IMG_API+dir,{headers:{"Accept":"application/vnd.github+json"}},6500);
       if(!res.ok) throw new Error("img "+dir);
       const arr=await res.json();
       const map={};
@@ -1820,7 +1851,7 @@ const OFFICIAL_RECENT = [
   function owned(p){ return p && state.owned.has(partId(p)); }
 
   function saveOwned(){
-    localStorage.setItem("beyx-owned",JSON.stringify([...state.owned]));
+    safeStoreSet("beyx-owned",JSON.stringify([...state.owned]));
   }
 
   function imgTag(p, cls=""){
@@ -3025,7 +3056,7 @@ const OFFICIAL_RECENT = [
       setMode(state.mode); renderAll(); toast("已載入配裝");
     }));
     box.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{
-      state.saved.splice(Number(b.dataset.del),1); localStorage.setItem("beyx-saved",JSON.stringify(state.saved)); renderSaved();
+      state.saved.splice(Number(b.dataset.del),1); safeStoreSet("beyx-saved",JSON.stringify(state.saved)); renderSaved();
     }));
   }
 
@@ -3174,18 +3205,18 @@ const OFFICIAL_RECENT = [
   function saveLiveMeta(){
     if(!state.liveMeta) return;
     try{
-      localStorage.setItem("beyx-live-meta",JSON.stringify({
+      safeStoreSet("beyx-live-meta",JSON.stringify({
         meta:state.liveMeta,
         ratchets:state.liveRatchetUsage,
         bits:state.liveBitUsage
       }));
-      localStorage.setItem("beyx-meta-window",state.liveMetaWindow);
+      safeStoreSet("beyx-meta-window",state.liveMetaWindow);
     }catch(e){}
   }
 
   function loadCachedLiveMeta(){
     try{
-      const cached=JSON.parse(localStorage.getItem("beyx-live-meta")||"null");
+      const cached=safeJsonGet("beyx-live-meta",null);
       if(cached?.meta?.map){
         state.liveMeta=cached.meta;
         state.liveMetaWindow=cached.meta.window||state.liveMetaWindow;
@@ -3616,7 +3647,7 @@ const OFFICIAL_RECENT = [
 
   function garageEntryById(id){ return garageCatalogEntries().find(x=>x.id===id)||null; }
 
-  function garageSave(){ localStorage.setItem("beyx-garage",JSON.stringify(state.garageItems)); }
+  function garageSave(){ safeStoreSet("beyx-garage",JSON.stringify(state.garageItems)); }
 
   function garageAddSelected(){
     const sel=$("#garageBeySelect");
@@ -4767,7 +4798,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
 
   $("#metaWindow").addEventListener("change",e=>{
     state.liveMetaWindow=e.target.value;
-    localStorage.setItem("beyx-meta-window",state.liveMetaWindow);
+    safeStoreSet("beyx-meta-window",state.liveMetaWindow);
     const info=metaWindowInfo(state.liveMetaWindow);
     $("#metaSourceLink").href=info.url;
     if(state.liveMeta?.window===state.liveMetaWindow){
@@ -4800,7 +4831,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
     const name=comboLabel(); if(!name){ toast("請先選擇零件"); return; }
     const keys={}; for(const s of activeSlots()) if(state.selected[s]) keys[s]=state.selected[s].key;
     state.saved.unshift({name,mode:state.mode,keys,date:new Date().toLocaleDateString("zh-TW")});
-    state.saved=state.saved.slice(0,30); localStorage.setItem("beyx-saved",JSON.stringify(state.saved)); renderSaved(); toast("已儲存配裝");
+    state.saved=state.saved.slice(0,30); safeStoreSet("beyx-saved",JSON.stringify(state.saved)); renderSaved(); toast("已儲存配裝");
   });
 
   const hadCachedMeta=loadCachedLiveMeta();
@@ -4812,7 +4843,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
     const m=state.liveMeta;
     setMetaStatus(`已載入上次更新：${m.windowLabel}・${m.events??"—"} 場賽事・${m.podiumDecks??"—"} 副頒獎台 deck・Beycrate 更新 ${m.updated||"—"}`,"ok");
   }
-  renderStats(); renderSaved(); init();
+  renderStats(); renderSaved(); init().catch(err=>{ console.error("init failed",err); const t=$("#liveText"); if(t) t.textContent="已載入基本功能（外部資料失敗）"; const d=$("#liveDot"); if(d) d.className="dot"; });
 })();
 </script>
 </body>
