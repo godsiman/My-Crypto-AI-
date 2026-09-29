@@ -276,6 +276,22 @@
     .specialStructureExamples b{color:#fff}
     .specialStructureWarn{margin-top:8px;border-left:3px solid var(--warn);padding:7px 9px;background:rgba(255,190,59,.07);color:#d9c99b;font-size:9px;line-height:1.55}
     .specialStructureCard a{font-size:9px}
+    .specialTwoPiece{display:grid;grid-template-columns:minmax(0,1fr) 26px minmax(0,1fr);align-items:center;gap:8px;margin:10px 0}
+    .specialPieceVisual{border:1px solid var(--line);border-radius:12px;background:#101720;padding:9px;display:grid;grid-template-columns:76px minmax(0,1fr);gap:9px;align-items:center}
+    .specialPieceVisual img{width:76px;height:76px;object-fit:contain;background:#f5f6f8;border-radius:9px;display:block}
+    .specialPieceVisual b{display:block;font-size:10px;margin-bottom:3px}
+    .specialPieceVisual small{display:block;color:#a8b3c1;font-size:8.5px;line-height:1.45}
+    .specialPlus{text-align:center;font-size:20px;font-weight:950;color:#ffce68}
+    .twoPieceBadge{display:inline-flex;align-items:center;border:1px solid rgba(255,190,59,.45);background:rgba(255,190,59,.09);color:#ffd371;border-radius:999px;padding:5px 8px;font-size:8.5px;font-weight:950;margin-top:7px}
+    .integratedMiniGuide{margin-bottom:12px;border:1px solid rgba(255,190,59,.28);background:rgba(255,190,59,.055);border-radius:13px;padding:11px}
+    .integratedMiniGuide h4{margin:0 0 5px;font-size:11px}
+    .integratedMiniGuide p{margin:0;color:#c4ceda;font-size:9px;line-height:1.55}
+    @media(max-width:700px){
+      .specialTwoPiece{grid-template-columns:1fr}
+      .specialPlus{transform:rotate(90deg)}
+      .specialPieceVisual{grid-template-columns:68px minmax(0,1fr)}
+      .specialPieceVisual img{width:68px;height:68px}
+    }
     @media(max-width:700px){.specialStructureGrid{grid-template-columns:1fr}}
     @media(max-width:700px){.partsGuideGrid{grid-template-columns:1fr}.partsGuideCard h3,.ratchetExplain h3{font-size:14px}}
 
@@ -765,7 +781,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.4</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.5</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -862,12 +878,22 @@
         <div class="specialStructureCard">
           <h4>① UX Expand｜Ratchet 一體型 Blade → 整顆 2 件</h4>
           <p>Ratchet 已經做進 Blade 裡，所以組裝時只有「一體型 Blade + Bit」兩個主要可拆單元。</p>
-          <div class="specialStructureFormula">Ratchet 一體型 Blade ＋ Bit<br>＝ 2 件式</div>
+          <div class="specialTwoPiece">
+            <div class="specialPieceVisual">
+              <img src="https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_02%401.png" alt="UX-21 Hells Nether Ratchet-integrated Blade" loading="lazy">
+              <div><b>1｜惡魔冥界 Ratchet 一體型 Blade</b><small>Blade 與 Ratchet 已整合成同一件，所以不會再看到獨立 1-60、3-60、9-60。</small></div>
+            </div>
+            <div class="specialPlus">＋</div>
+            <div class="specialPieceVisual">
+              <img src="https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_04%401.png" alt="UX-21 Z Bit" loading="lazy">
+              <div><b>2｜Z Bit 軸心</b><small>第二個主要可拆單元；Z 是 Bit，不是 Ratchet。</small></div>
+            </div>
+          </div>
+          <div class="specialStructureFormula">Ratchet 一體型 Blade ＋ Bit<br>＝ <b>2 件式</b></div>
           <div class="specialStructureExamples"><b>官方例：</b>UX-19 Bullet Griffon H、UX-20 Glory Valkyrie LF、UX-21 Hells Nether Z、UX-00 Glory Valkyrie LF 金屬塗層：藍。</div>
-          <div class="specialStructureWarn"><b>注意：</b>UX Expand Blade 不能再裝獨立 Ratchet，也不能裝「Ratchet 一體型 Bit」。Hells Nether 就屬於這一類；不是少了一顆 Ratchet。</div>
+          <div class="specialStructureWarn"><b>注意：</b>UX Expand Blade 不能再裝獨立 Ratchet。Hells Nether 就屬於這一類；不是少了一顆 Ratchet。</div>
           <a href="https://beyblade.takaratomy.co.jp/beyblade-x/help/noratchet/" target="_blank" rel="noopener">官方 UX Expand 相容性說明 ↗</a>
         </div>
-
         <div class="specialStructureCard">
           <h4>② Ratchet 一體型 Bit｜Ratchet + Bit 合成 1 件</h4>
           <p>這次反過來：上蓋正常，但中間 Ratchet 與最下面 Bit 合併成一個零件。</p>
@@ -2474,8 +2500,26 @@ const OFFICIAL_RECENT = [
     const resolved=currentStockParts();
     const editableSlots=slots.filter(s=>state.parts[s]?.length);
     const integrated=!!sb.ratchetIntegrated && currentStockIsIntegrated();
+    const integratedGuide=(sb.ratchetIntegrated && integrated) ? `
+      <div class="integratedMiniGuide">
+        <h4>UX Expand 原廠結構：2 件式</h4>
+        <p><b>Ratchet 一體型 Blade + Bit</b>。原廠一體型 Blade 已含 Ratchet，所以不是缺件；Bit 仍可正常更換。</p>
+        <div class="specialTwoPiece">
+          <div class="specialPieceVisual">
+            <img src="${esc(sb.id==="UX21-01"?"https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_02%401.png":sb.image||"")}" alt="${esc(sb.name+" 一體型 Blade")}" loading="lazy">
+            <div><b>1｜Ratchet 一體型 Blade</b><small>上蓋 + Ratchet 是同一件。</small></div>
+          </div>
+          <div class="specialPlus">＋</div>
+          <div class="specialPieceVisual">
+            <img src="${esc(sb.id==="UX21-01"?"https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_04%401.png":"")}" alt="${esc(sb.name+" Bit")}" loading="lazy">
+            <div><b>2｜Bit 軸心</b><small>第二件；可以換其他一般 Bit。</small></div>
+          </div>
+        </div>
+        <span class="twoPieceBadge">原廠主要可拆單元：2 件</span>
+      </div>` : "";
     let html=`<div class="setEditor">
       <div class="setEditorHead"><b>${esc(sb.name)}｜直接換零件</b><span>與下方零件庫同步</span></div>
+      ${integratedGuide}
       <div class="stockSelectors">`;
     for(const slot of editableSlots){
       html+=`<div class="stockSlot">
