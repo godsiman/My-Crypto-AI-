@@ -787,7 +787,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.5</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.7</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -2023,7 +2023,7 @@ const OFFICIAL_RECENT = [
   }
 
   function partId(p){ return p ? p.slot+":"+p.key : ""; }
-  function owned(p){ return p && state.owned.has(partId(p)); }
+  function owned(p){ if(!p) return false; const id=partId(p); if(state.owned.has(id)) return true; try{return (garageInventory().get(id)?.qty||0)>0;}catch(e){return false;} }
 
   function saveOwned(){
     safeStoreSet("beyx-owned",JSON.stringify([...state.owned]));
@@ -4161,8 +4161,8 @@ const OFFICIAL_RECENT = [
         <div class="autoBuildCode">${esc(c.blade.en)} · ${esc(typeLabelZh(c.blade.type))}</div>
         <div class="autoBuildMeta"><span><b>${esc(c.ratchet?displayNameForPart(c.ratchet):"Ratchet 一體")}</b><small>${esc(ratchetSource||"來源未標記")}</small></span><span><b>${esc(displayNameForPart(c.bit))}</b><small>${esc(bitSource||"來源未標記")}</small></span></div>
         <div class="autoBuildScore">${esc(c.evidence)}</div>
-        <div class="autoBuildMissing">${esc(c.missing.length?"缺："+c.missing.join("、"):"✓ 你現有零件可直接組")}</div>
-        <div class="autoBuildActions"><button class="autoBuildApply" type="button" data-autoapply="${i}">一鍵套用</button>${c.missing.length?'<button class="autoBuildOwn" type="button" disabled>需補零件</button>':'<button class="autoBuildOwn" type="button">✓ 可直接組</button>'}</div>
+        <div class="autoBuildMissing">${esc(c.missing.length?"缺："+c.missing.join("、"):"✓ 你現有零件足夠，可直接組")}</div>
+        <div class="autoBuildActions"><button class="autoBuildApply" type="button" data-autoapply="${i}">一鍵套用</button>${c.missing.length?'<button class="autoBuildOwn" type="button" disabled>需補零件</button>':'<button class="autoBuildOwn" type="button">✓ 足夠零件</button>'}</div>
       </article>`;
     }).join("");
     box.querySelectorAll("[data-autoapply]").forEach(b=>b.addEventListener("click",()=>applyGarageCandidate(Number(b.dataset.autoapply))));
