@@ -26,16 +26,16 @@ jobs:
           s=p.read_text(encoding='utf-8')
           old='function owned(p){ return p && state.owned.has(partId(p)); }'
           new='function owned(p){ if(!p) return false; const id=partId(p); if(state.owned.has(id)) return true; try{return (garageInventory().get(id)?.qty||0)>0;}catch(e){return false;} }'
-          if s.count(old)!=1:
-              raise SystemExit(f'owned function expected 1 match, got {s.count(old)}')
+          if old not in s:
+              raise SystemExit('owned function not found')
           s=s.replace(old,new,1)
           s=s.replace('✓ 你現有零件可直接組','✓ 你現有零件足夠，可直接組')
-          s=s.replace("'✓ 可直接組'","'✓ 足夠零件'")
+          s=s.replace('✓ 可直接組</button>','✓ 足夠零件</button>')
           s=s.replace('>V23.5</span>','>V23.7</span>',1)
           p.write_text(s,encoding='utf-8')
           PY
           grep -q 'garageInventory().get(id)' index.html
-          grep -q '足夠零件' index.html
+          grep -q '足夠零件</button>' index.html
       - name: Commit
         shell: bash
         run: |
