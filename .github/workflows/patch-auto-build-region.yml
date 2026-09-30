@@ -59,8 +59,8 @@ jobs:
           '''        const id=partId(p);\n        const sourceLabel=[bey.code,bey.name].filter(Boolean).join("｜");\n        if(!map.has(id)) map.set(id,{id,slot,p,qty:0,sources:[]});\n        const bucket=map.get(id);\n        bucket.qty++;\n        if(sourceLabel && !bucket.sources.includes(sourceLabel)) bucket.sources.push(sourceLabel);\n''',
           'inventory sources')
 
-          marker = '''    return map;\n  }\n\n  function garagePartGroups(){'''
-          insert = '''    return map;\n  }\n\n  function garagePartSourceLabel(p,inv=null){\n    if(!p) return "";\n    const id=partId(p);\n    const inventory=inv || garageInventory();\n    const owned=inventory.get(id)?.sources?.[0];\n    if(owned) return owned;\n    for(const entry of garageCatalogEntries()){\n      if(entry.kind==="set"){\n        for(const bey of entry.set?.beys||[]){\n          const parts=resolvePartMap(bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit});\n          if(Object.values(parts).some(x=>x && partId(x)===id)) return [entry.code,bey.name].filter(Boolean).join("｜");\n        }\n      }else if(Object.values(entry.parts||{}).some(x=>x && partId(x)===id)){\n        return [entry.code,entry.title].filter(Boolean).join("｜");\n      }\n    }\n    return "";\n  }\n\n  function garagePartGroups(){'''
+          marker = '''    return map;\n  }\n\n  function garageEntrySearchText(x){'''
+          insert = '''    return map;\n  }\n\n  function garagePartSourceLabel(p,inv=null){\n    if(!p) return "";\n    const id=partId(p);\n    const inventory=inv || garageInventory();\n    const owned=inventory.get(id)?.sources?.[0];\n    if(owned) return owned;\n    for(const entry of garageCatalogEntries()){\n      if(entry.kind==="set"){\n        for(const bey of entry.set?.beys||[]){\n          const parts=resolvePartMap(bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit});\n          if(Object.values(parts).some(x=>x && partId(x)===id)) return [entry.code,bey.name].filter(Boolean).join("｜");\n        }\n      }else if(Object.values(entry.parts||{}).some(x=>x && partId(x)===id)){\n        return [entry.code,entry.title].filter(Boolean).join("｜");\n      }\n    }\n    return "";\n  }\n\n  function garageEntrySearchText(x){'''
           repl(marker, insert, 'part source helper')
 
           repl(
@@ -95,6 +95,15 @@ jobs:
           grep -q 'id="autoBuildRegionTabs"' index.html
           grep -q 'garagePartSourceLabel' index.html
           grep -q 'beyx-auto-region' index.html
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script[^>]*>(.*?)</script>',s,re.S)
+          Path('/tmp/beyblade-main.js').write_text(scripts[-1],encoding='utf-8')
+          PY
+          node --check /tmp/beyblade-main.js
 
       - name: Commit patch to site branch
         shell: bash
