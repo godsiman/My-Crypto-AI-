@@ -509,7 +509,10 @@
     .recoCombo{margin-top:5px;font-size:12px;font-weight:950;line-height:1.35}
     .recoEvidence{margin-top:4px;color:#8592a2;font-size:8px;line-height:1.45}
     .recoOwned{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
-    .recoOwned span{border:1px solid var(--line);border-radius:999px;padding:3px 5px;font-size:8px}
+    .recoOwned span,.recoOwned button{border:1px solid var(--line);border-radius:999px;padding:3px 5px;font-size:8px;background:transparent;font:inherit}
+    .recoOwned button{cursor:pointer;text-decoration:none}
+    .recoOwned button:hover,.partSourceLink:hover{text-decoration:underline}
+    .partSourceLink{cursor:pointer;text-align:left}
     .recoOwned .have{color:#7ce5ba;border-color:rgba(41,211,145,.3)}
     .recoOwned .miss{color:#9ba7b5}
     .recoActions{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:7px}
@@ -787,7 +790,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.7</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.8</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -2913,9 +2916,9 @@ const OFFICIAL_RECENT = [
     const ratchet=build.ratchet?findPart("ratchet",build.ratchet):null;
     const bit=build.bit?findPart("bit",build.bit):null;
     const checks=[
-      {name:"上蓋",ok:!!blade && owned(blade)},
-      ...(ratchet?[{name:build.ratchet,ok:owned(ratchet)}]:[]),
-      ...(bit?[{name:build.bit,ok:owned(bit)}]:[])
+      {name:blade?`上蓋｜${blade.zh||blade.en}`:"上蓋",ok:!!blade && owned(blade),part:blade||null},
+      ...(ratchet?[{name:displayNameForPart(ratchet),ok:owned(ratchet),part:ratchet}]:[]),
+      ...(bit?[{name:displayNameForPart(bit),ok:owned(bit),part:bit}]:[])
     ];
     return {checks,all:checks.every(x=>x.ok),ratchet,bit};
   }
@@ -2958,8 +2961,14 @@ const OFFICIAL_RECENT = [
 
   function recommendationLabel(build){
     const parts=[];
-    if(build.ratchet) parts.push(build.ratchet);
-    if(build.bit) parts.push(localizedBitLabel(build.bit));
+    if(build.ratchet){
+      const rp=findPart("ratchet",build.ratchet);
+      parts.push(rp?displayNameForPart(rp):build.ratchet);
+    }
+    if(build.bit){
+      const bp=findPart("bit",build.bit);
+      parts.push(bp?displayNameForPart(bp):localizedBitLabel(build.bit));
+    }
     return parts.length?parts.join(" + "):localizedMetaBuildLabel(build);
   }
 
@@ -3035,7 +3044,7 @@ const OFFICIAL_RECENT = [
         <div class="recoTop"><span class="recoRank">#${i+1}</span><span class="recoTag">${esc(tag)}</span></div>
         <div class="recoCombo">${esc(recommendationLabel(b))}</div>
         <div class="recoEvidence">${esc(b.evidence||"")}</div>
-        <div class="recoOwned">${own.checks.map(x=>`<span class="${x.ok?"have":"miss"}">${x.ok?"✓":"○"} ${esc(x.name)}</span>`).join("")}</div>
+        <div class="recoOwned">${own.checks.map(x=>x.part?`<button type="button" class="${x.ok?"have":"miss"}" data-part-detail="${esc(partId(x.part))}" title="點開零件實物圖與原廠來源">${x.ok?"✓":"○"} ${esc(x.name)}</button>`:`<span class="${x.ok?"have":"miss"}">${x.ok?"✓":"○"} ${esc(x.name)}</span>`).join("")}</div>
         <div class="recoActions">
           <button type="button" class="recoApply" data-reco-apply="${i}">一鍵套用</button>
           ${!own.all?`<button type="button" class="recoTryOwned" data-reco-closest="${i}">用我現有零件試</button>`:""}
@@ -3046,6 +3055,11 @@ const OFFICIAL_RECENT = [
       (rows.length>5?`<button type="button" class="recoMore">${state.recoShowAll?"收起":"看全部 "+rows.length+" 組"}</button>`:"");
 
     const shownRows=rows.slice(0,limit);
+    box.querySelectorAll("[data-part-detail]").forEach(btn=>btn.addEventListener("click",()=>{
+      const [slot,key]=btn.dataset.partDetail.split(":");
+      const part=(state.parts[slot]||[]).find(x=>x.key===key) || Object.values(state.selected).find(x=>x && partId(x)===btn.dataset.partDetail);
+      if(part) showPartDetail(part);
+    }));
     box.querySelectorAll("[data-reco-apply]").forEach(btn=>btn.addEventListener("click",()=>applyBladeReco(shownRows[Number(btn.dataset.recoApply)])));
     box.querySelectorAll("[data-reco-closest]").forEach(btn=>btn.addEventListener("click",()=>{
       const closest=findClosestOwnedReco(blade);
@@ -3214,13 +3228,16 @@ const OFFICIAL_RECENT = [
     const chips=[];
     for(const s of activeSlots()){
       const p=state.selected[s]; if(!p) continue;
-      const srcs=p.sources.slice(0,3);
-      const codes=productCodesForPart(p);
-      const codeText=codes.length?`[${codes.slice(0,3).join(" / ")}] `:"";
-      if(srcs.length) chips.push(`<span class="sourcechip"><b>${esc(p.en)}</b>：${esc(codeText+srcs.join(" / "))}</span>`);
-      else chips.push(`<span class="sourcechip"><b>${esc(p.en)}</b>：${esc(codeText)}來源待補</span>`);
+      const srcs=garagePartSourceLabels(p,6);
+      chips.push(`<button type="button" class="sourcechip partSourceLink" data-selected-part="${esc(partId(p))}" title="點開零件實物圖與原廠收錄商品"><b>${esc(displayNameForPart(p))}</b>：${esc(srcs.length?srcs.join(" / "):"來源待補")}</button>`);
     }
-    $("#selectedSources").innerHTML=chips.length?chips.join(""):'<span class="sourcechip">完成選擇後顯示</span>';
+    const sourceBox=$("#selectedSources");
+    sourceBox.innerHTML=chips.length?chips.join(""):'<span class="sourcechip">完成選擇後顯示</span>';
+    sourceBox.querySelectorAll("[data-selected-part]").forEach(btn=>btn.addEventListener("click",()=>{
+      const [slot,key]=btn.dataset.selectedPart.split(":");
+      const part=(state.parts[slot]||[]).find(x=>x.key===key) || Object.values(state.selected).find(x=>x && partId(x)===btn.dataset.selectedPart);
+      if(part) showPartDetail(part);
+    }));
   }
 
   function renderShopping(){
@@ -3853,7 +3870,7 @@ const OFFICIAL_RECENT = [
         <div class="productLineRow" style="margin-top:10px">${productCodesForPart(p).length?productCodesForPart(p).map(c=>`<span class="productCode ${productCodeClass(c)}">${esc(c)}</span>`).join(""):`<span class="productCode">商品碼待補</span>`}</div>
         <div class="detailDesc">${esc(p.description||"目前沒有說明資料。")}</div>
         <div class="detailStats">${statPairs.map(([n,v])=>`<div class="detailStat"><small>${n}</small><b>${Number(v)||0}</b></div>`).join("")}</div>
-        <div class="detailSection"><h3>收錄商品</h3><div class="sourcechips">${(p.sources.length?p.sources:["來源待補"]).slice(0,8).map((x,i)=>{
+        <div class="detailSection"><h3>收錄商品｜點商品可看原廠整顆</h3><div class="sourcechips">${garagePartSourceLabels(p,8).map((x,i)=>{
           const target=x==="來源待補"?null:findSourceProductTarget(p,x);
           return target
             ? `<button type="button" class="sourcechip sourceProductBtn" data-source-product="${i}" title="點開完整原廠陀螺">${esc(x)}</button>`
@@ -3863,7 +3880,7 @@ const OFFICIAL_RECENT = [
         <div class="photoNote">目前使用零件實物 / 商品素材圖片；沒有真正 3D 模型時以高解析圖片檢視。</div>
       </div>
     </div>`;
-    const sources=(p.sources.length?p.sources:["來源待補"]).slice(0,8);
+    const sources=garagePartSourceLabels(p,8);
     $("#dialogContent").querySelectorAll("[data-source-product]").forEach(btn=>{
       btn.addEventListener("click",()=>{
         const source=sources[Number(btn.dataset.sourceProduct)];
@@ -4067,6 +4084,34 @@ const OFFICIAL_RECENT = [
     if(type==="defense") return D*1.8 + B*.8 + S*.55 + A*.25 + X*.15;
     if(type==="stamina") return S*1.9 + D*.65 + B*.45 + A*.2 + X*.1;
     return A*.9 + D*.9 + S*.9 + X*.45 + B*.45;
+  }
+
+  function garagePartSourceLabels(p,limit=8){
+    if(!p) return [];
+    const id=partId(p), out=[];
+    const add=(code,name)=>{
+      const label=[code,name].filter(Boolean).join("｜");
+      if(label && !out.includes(label)) out.push(label);
+    };
+    for(const entry of garageCatalogEntries()){
+      if(entry.kind==="set"){
+        for(const bey of entry.set?.beys||[]){
+          const parts=resolvePartMap(bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit});
+          if(Object.values(parts).some(x=>x && partId(x)===id)) add(entry.code,bey.name||entry.title);
+          if(out.length>=limit) break;
+        }
+      }else if(Object.values(entry.parts||{}).some(x=>x && partId(x)===id)){
+        add(entry.code,entry.title);
+      }
+      if(out.length>=limit) break;
+    }
+    if(!out.length){
+      for(const src of p.sources||[]){
+        if(src && !out.includes(src)) out.push(src);
+        if(out.length>=limit) break;
+      }
+    }
+    return out.slice(0,limit);
   }
 
   function garageCandidateBuilds(){
