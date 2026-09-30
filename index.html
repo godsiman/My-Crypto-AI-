@@ -590,6 +590,10 @@
     .autoBuildHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
     .autoBuildHead h2{margin:5px 0 0;font-size:17px}.autoBuildHead p{margin:5px 0 0;color:var(--muted);font-size:9px;line-height:1.5}
     .autoBuildLegend{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.autoBuildLegend span{border:1px solid var(--line);border-radius:999px;padding:5px 7px;font-size:8px;font-weight:900}
+    .autoBuildRegionTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 12px;padding:4px;border:1px solid var(--line);background:#0b1016;border-radius:11px}
+    .autoBuildRegionTabs button{border:0;border-radius:8px;padding:9px 10px;background:transparent;color:#98a5b4;font-size:10px;font-weight:900}
+    .autoBuildRegionTabs button.active{background:#24303e;color:#fff;box-shadow:inset 0 0 0 1px #3a495b}
+    .autoBuildRegionTabs button[data-auto-region="taiwan"].active{background:#123127;color:#7ce5ba;box-shadow:inset 0 0 0 1px rgba(41,211,145,.38)}
     .evidenceMeta{color:#7ce5ba!important;border-color:rgba(41,211,145,.3)!important;background:rgba(41,211,145,.06)!important}
     .evidenceTheory{color:#ffe08a!important;border-color:rgba(255,208,90,.3)!important;background:rgba(255,208,90,.06)!important}
     .autoBuildResults{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -599,8 +603,10 @@
     .autoBuildEvidence{font-size:8px;border:1px solid var(--line);border-radius:999px;padding:4px 6px;font-weight:900}
     .autoBuildName{margin-top:6px;font-size:13px;font-weight:950;line-height:1.3}
     .autoBuildCode{margin-top:3px;color:#8391a1;font-size:8px}
-    .autoBuildMeta{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
-    .autoBuildMeta span{border:1px solid var(--line);border-radius:999px;padding:4px 6px;font-size:8px;color:#c3cdd8}
+    .autoBuildMeta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}
+    .autoBuildMeta span{border:1px solid var(--line);border-radius:9px;padding:6px 7px;font-size:8px;color:#c3cdd8;min-width:0}
+    .autoBuildMeta span b{display:block;font-size:9px;color:#eef3f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .autoBuildMeta span small{display:block;margin-top:3px;font-size:8px;line-height:1.35;color:#7ce5ba;white-space:normal}
     .autoBuildScore{margin-top:7px;font-size:9px;color:#9aa7b6}
     .autoBuildMissing{margin-top:6px;font-size:8px;color:#ffd171}
     .autoBuildActions{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:8px}
@@ -1170,6 +1176,10 @@
           <span class="evidenceMeta">賽場實證</span>
           <span class="evidenceTheory">理論補位</span>
         </div>
+      </div>
+      <div id="autoBuildRegionTabs" class="autoBuildRegionTabs" aria-label="Auto Build 賽場地區">
+        <button type="button" class="active" data-auto-region="global">🌍 全球賽場</button>
+        <button type="button" data-auto-region="taiwan">🇹🇼 台灣實戰</button>
       </div>
       <div id="autoBuildResults" class="autoBuildResults">
         <div class="garageEmpty">先加入你有的陀螺，再按上面的自動配裝。</div>
@@ -1846,7 +1856,8 @@ const OFFICIAL_RECENT = [
     recoTab:"global",
     recoShowAll:false,
     garageItems:safeJsonArray("beyx-garage"),
-    garageResults:[]
+    garageResults:[],
+    autoBuildRegion:safeStoreGet("beyx-auto-region","global") || "global"
   };
 
   const $ = s => document.querySelector(s);
@@ -3950,11 +3961,33 @@ const OFFICIAL_RECENT = [
         if(!p) continue;
         if(bey.integrated && slot==="ratchet") continue;
         const id=partId(p);
-        if(!map.has(id)) map.set(id,{id,slot,p,qty:0});
-        map.get(id).qty++;
+        const sourceLabel=[bey.code,bey.name].filter(Boolean).join("｜");
+        if(!map.has(id)) map.set(id,{id,slot,p,qty:0,sources:[]});
+        const bucket=map.get(id);
+        bucket.qty++;
+        if(sourceLabel && !bucket.sources.includes(sourceLabel)) bucket.sources.push(sourceLabel);
       }
     }
     return map;
+  }
+
+  function garagePartSourceLabel(p,inv=null){
+    if(!p) return "";
+    const id=partId(p);
+    const inventory=inv || garageInventory();
+    const owned=inventory.get(id)?.sources?.[0];
+    if(owned) return owned;
+    for(const entry of garageCatalogEntries()){
+      if(entry.kind==="set"){
+        for(const bey of entry.set?.beys||[]){
+          const parts=resolvePartMap(bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit});
+          if(Object.values(parts).some(x=>x && partId(x)===id)) return [entry.code,bey.name].filter(Boolean).join("｜");
+        }
+      }else if(Object.values(entry.parts||{}).some(x=>x && partId(x)===id)){
+        return [entry.code,entry.title].filter(Boolean).join("｜");
+      }
+    }
+    return "";
   }
 
   function garageEntrySearchText(x){
@@ -4056,14 +4089,18 @@ const OFFICIAL_RECENT = [
       candidates.push({blade,ratchet,bit,kind,score:score-missing.length*120,evidence,missing,key});
     };
 
+    const autoRegion=state.autoBuildRegion==="taiwan"?"taiwan":"global";
     for(const blade of blades){
-      for(const b of globalRecoBuilds(blade)){
-        const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
-        if(bit) addCandidate(blade,r,bit,"meta",metaScoreForCandidate(blade,b),`全球賽場：${b.evidence||""}`);
-      }
-      for(const b of taiwanRecoBuilds(blade)){
-        const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
-        if(bit) addCandidate(blade,r,bit,"taiwan",760-b.rank*8,`台灣實戰：${b.evidence||""}`);
+      if(autoRegion==="global"){
+        for(const b of globalRecoBuilds(blade)){
+          const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
+          if(bit) addCandidate(blade,r,bit,"meta",metaScoreForCandidate(blade,b),`全球賽場：${b.evidence||""}`);
+        }
+      }else{
+        for(const b of taiwanRecoBuilds(blade)){
+          const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
+          if(bit) addCandidate(blade,r,bit,"taiwan",760-b.rank*8,`台灣實戰：${b.evidence||""}`);
+        }
       }
     }
 
@@ -4091,8 +4128,9 @@ const OFFICIAL_RECENT = [
       chosen.push(c);
     }
     state.garageResults=chosen; renderGarageResults();
-    $("#autoBuildDesc").textContent=`${unique?"零件不重複・可同時組裝":"可重複・候選配法"}｜共找到 ${chosen.length} 組；優先賽場實證，不足再用理論能力補位。`;
-    toast(`已排出 ${chosen.length} 組`);
+    const regionLabel=state.autoBuildRegion==="taiwan"?"台灣實戰":"全球賽場";
+    $("#autoBuildDesc").textContent=`${unique?"零件不重複・可同時組裝":"可重複・候選配法"}｜${regionLabel}｜共找到 ${chosen.length} 組；該賽場資料不足時再用理論能力補位。`;
+    toast(`已排出 ${chosen.length} 組｜${regionLabel}`);
   }
 
   function applyGarageCandidate(index){
@@ -4109,15 +4147,19 @@ const OFFICIAL_RECENT = [
     const box=$("#autoBuildResults"); if(!box) return;
     const rows=state.garageResults||[];
     if(!rows.length){box.innerHTML='<div class="garageEmpty" style="grid-column:1/-1">先加入你有的陀螺，再按「幫我配前 10 名」。</div>';return;}
+    const inv=garageInventory();
     box.innerHTML=rows.map((c,i)=>{
       const d=metaDisplayForName(c.blade.en||c.blade.zh);
+      const bladeSource=garagePartSourceLabel(c.blade,inv);
+      const ratchetSource=c.ratchet?garagePartSourceLabel(c.ratchet,inv):bladeSource;
+      const bitSource=garagePartSourceLabel(c.bit,inv);
       const kind=c.kind==="theory"?"理論補位":c.kind==="taiwan"?"台灣實戰":"全球賽場";
       const cls=c.kind==="theory"?"evidenceTheory":"evidenceMeta";
       return `<article class="autoBuildCard">
         <div class="autoBuildTop"><span class="autoBuildRank">#${i+1}</span><span class="autoBuildEvidence ${cls}">${kind}</span></div>
         <div class="autoBuildName">${d.code?`<span class="metaProductTag">${esc(d.code)}</span> `:""}${esc(c.blade.zh||c.blade.en)} ${esc([c.ratchet?.en,c.bit?.en].filter(Boolean).join(" + "))}</div>
         <div class="autoBuildCode">${esc(c.blade.en)} · ${esc(typeLabelZh(c.blade.type))}</div>
-        <div class="autoBuildMeta"><span>${esc(c.ratchet?displayNameForPart(c.ratchet):"Ratchet 一體")}</span><span>${esc(displayNameForPart(c.bit))}</span></div>
+        <div class="autoBuildMeta"><span><b>${esc(c.ratchet?displayNameForPart(c.ratchet):"Ratchet 一體")}</b><small>${esc(ratchetSource||"來源未標記")}</small></span><span><b>${esc(displayNameForPart(c.bit))}</b><small>${esc(bitSource||"來源未標記")}</small></span></div>
         <div class="autoBuildScore">${esc(c.evidence)}</div>
         <div class="autoBuildMissing">${esc(c.missing.length?"缺："+c.missing.join("、"):"✓ 你現有零件可直接組")}</div>
         <div class="autoBuildActions"><button class="autoBuildApply" type="button" data-autoapply="${i}">一鍵套用</button>${c.missing.length?'<button class="autoBuildOwn" type="button" disabled>需補零件</button>':'<button class="autoBuildOwn" type="button">✓ 可直接組</button>'}</div>
@@ -4923,6 +4965,22 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
     }
   });
   $("#garageGenerate").addEventListener("click",generateGarageBuilds);
+  const autoRegionTabs=$("#autoBuildRegionTabs");
+  if(autoRegionTabs){
+    const syncAutoRegion=()=>autoRegionTabs.querySelectorAll("[data-auto-region]").forEach(b=>b.classList.toggle("active",b.dataset.autoRegion===state.autoBuildRegion));
+    syncAutoRegion();
+    autoRegionTabs.addEventListener("click",e=>{
+      const btn=e.target.closest("[data-auto-region]"); if(!btn) return;
+      const next=btn.dataset.autoRegion; if(!["global","taiwan"].includes(next)) return;
+      const hadResults=(state.garageResults||[]).length>0;
+      state.autoBuildRegion=next; safeStoreSet("beyx-auto-region",next); syncAutoRegion();
+      if(hadResults) generateGarageBuilds();
+      else{
+        state.garageResults=[]; renderGarageResults();
+        $("#autoBuildDesc").textContent=`已選 ${next==="taiwan"?"台灣實戰":"全球賽場"}；按「幫我配前 10 名」開始排序。`;
+      }
+    });
+  }
   $("#garageClear").addEventListener("click",()=>{
     state.garageItems=[]; state.garageResults=[]; garageSave(); renderGarage(); toast("已清空我的陀螺");
   });
