@@ -1,0 +1,101 @@
+name: Patch part source links
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.part-source-links-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beyblade-x-site
+          fetch-depth: 0
+
+      - name: Patch index.html
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          def one(old,new,label):
+              global s
+              n=s.count(old)
+              if n!=1:
+                  raise SystemExit(f'{label}: expected 1 match, got {n}')
+              s=s.replace(old,new,1)
+
+          # Clickable recommendation chips.
+          one(
+          '    .recoOwned span{border:1px solid var(--line);border-radius:999px;padding:3px 5px;font-size:8px}\n',
+          '    .recoOwned span,.recoOwned button{border:1px solid var(--line);border-radius:999px;padding:3px 5px;font-size:8px;background:transparent;font:inherit}\n    .recoOwned button{cursor:pointer;text-decoration:none}\n    .recoOwned button:hover,.partSourceLink:hover{text-decoration:underline}\n    .partSourceLink{cursor:pointer;text-align:left}\n',
+          'reco css')
+
+          # Recommendation title should use localized Ratchet + Bit labels.
+          old='''  function recommendationLabel(build){\n    const parts=[];\n    if(build.ratchet) parts.push(build.ratchet);\n    if(build.bit) parts.push(localizedBitLabel(build.bit));\n    return parts.length?parts.join(" + "):localizedMetaBuildLabel(build);\n  }'''
+          new='''  function recommendationLabel(build){\n    const parts=[];\n    if(build.ratchet){\n      const rp=findPart("ratchet",build.ratchet);\n      parts.push(rp?displayNameForPart(rp):build.ratchet);\n    }\n    if(build.bit){\n      const bp=findPart("bit",build.bit);\n      parts.push(bp?displayNameForPart(bp):localizedBitLabel(build.bit));\n    }\n    return parts.length?parts.join(" + "):localizedMetaBuildLabel(build);\n  }'''
+          one(old,new,'recommendation labels')
+
+          # Recommendation ownership chips carry the real part and localized name.
+          old='''  function recoBuildOwned(blade,build){\n    const ratchet=build.ratchet?findPart("ratchet",build.ratchet):null;\n    const bit=build.bit?findPart("bit",build.bit):null;\n    const checks=[\n      {name:"上蓋",ok:!!blade && owned(blade)},\n      ...(ratchet?[{name:build.ratchet,ok:owned(ratchet)}]:[]),\n      ...(bit?[{name:build.bit,ok:owned(bit)}]:[])\n    ];\n    return {checks,all:checks.every(x=>x.ok),ratchet,bit};\n  }'''
+          new='''  function recoBuildOwned(blade,build){\n    const ratchet=build.ratchet?findPart("ratchet",build.ratchet):null;\n    const bit=build.bit?findPart("bit",build.bit):null;\n    const checks=[\n      {name:blade?`上蓋｜${blade.zh||blade.en}`:"上蓋",ok:!!blade && owned(blade),part:blade||null},\n      ...(ratchet?[{name:displayNameForPart(ratchet),ok:owned(ratchet),part:ratchet}]:[]),\n      ...(bit?[{name:displayNameForPart(bit),ok:owned(bit),part:bit}]:[])\n    ];\n    return {checks,all:checks.every(x=>x.ok),ratchet,bit};\n  }'''
+          one(old,new,'reco owned localized')
+
+          # Add catalog-backed source labels so source lists contain code + Chinese product name.
+          marker='''  function garagePartGroups(){'''
+          helper='''  function garagePartSourceLabels(p,limit=8){\n    if(!p) return [];\n    const id=partId(p), out=[];\n    const add=(code,name)=>{\n      const label=[code,name].filter(Boolean).join("｜");\n      if(label && !out.includes(label)) out.push(label);\n    };\n    for(const entry of garageCatalogEntries()){\n      if(entry.kind==="set"){\n        for(const bey of entry.set?.beys||[]){\n          const parts=resolvePartMap(bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit});\n          if(Object.values(parts).some(x=>x && partId(x)===id)) add(entry.code,bey.name||entry.title);\n          if(out.length>=limit) break;\n        }\n      }else if(Object.values(entry.parts||{}).some(x=>x && partId(x)===id)){\n        add(entry.code,entry.title);\n      }\n      if(out.length>=limit) break;\n    }\n    if(!out.length){\n      for(const src of p.sources||[]){\n        if(src && !out.includes(src)) out.push(src);\n        if(out.length>=limit) break;\n      }\n    }\n    return out.slice(0,limit);\n  }\n\n'''
+          if helper.strip() not in s:
+              if marker not in s: raise SystemExit('garagePartGroups marker not found')
+              s=s.replace(marker,helper+marker,1)
+
+          # Current Build source list: localized part name + Chinese original product names + clickable part detail.
+          old='''    const chips=[];\n    for(const s of activeSlots()){\n      const p=state.selected[s]; if(!p) continue;\n      const srcs=p.sources.slice(0,3);\n      const codes=productCodesForPart(p);\n      const codeText=codes.length?`[${codes.slice(0,3).join(" / ")}] `:"";\n      if(srcs.length) chips.push(`<span class="sourcechip"><b>${esc(p.en)}</b>：${esc(codeText+srcs.join(" / "))}</span>`);\n      else chips.push(`<span class="sourcechip"><b>${esc(p.en)}</b>：${esc(codeText)}來源待補</span>`);\n    }\n    $("#selectedSources").innerHTML=chips.length?chips.join(""):'<span class="sourcechip">完成選擇後顯示</span>';\n  }'''
+          new='''    const chips=[];\n    for(const s of activeSlots()){\n      const p=state.selected[s]; if(!p) continue;\n      const srcs=garagePartSourceLabels(p,6);\n      chips.push(`<button type="button" class="sourcechip partSourceLink" data-selected-part="${esc(partId(p))}" title="點開零件實物圖與原廠收錄商品"><b>${esc(displayNameForPart(p))}</b>：${esc(srcs.length?srcs.join(" / "):"來源待補")}</button>`);\n    }\n    const sourceBox=$("#selectedSources");\n    sourceBox.innerHTML=chips.length?chips.join(""):'<span class="sourcechip">完成選擇後顯示</span>';\n    sourceBox.querySelectorAll("[data-selected-part]").forEach(btn=>btn.addEventListener("click",()=>{\n      const [slot,key]=btn.dataset.selectedPart.split(":");\n      const part=(state.parts[slot]||[]).find(x=>x.key===key) || Object.values(state.selected).find(x=>x && partId(x)===btn.dataset.selectedPart);\n      if(part) showPartDetail(part);\n    }));\n  }'''
+          one(old,new,'selected sources links')
+
+          # Part detail source list uses catalog-backed Chinese labels.
+          n=s.count('(p.sources.length?p.sources:["來源待補"]).slice(0,8)')
+          if n<2:
+              raise SystemExit(f'part dialog source expression expected >=2, got {n}')
+          s=s.replace('(p.sources.length?p.sources:["來源待補"]).slice(0,8)','garagePartSourceLabels(p,8)')
+
+          # Auto Recommend badges become clickable part links.
+          old='''        <div class="recoOwned">${own.checks.map(x=>`<span class="${x.ok?"have":"miss"}">${x.ok?"✓":"○"} ${esc(x.name)}</span>`).join("")}</div>'''
+          new='''        <div class="recoOwned">${own.checks.map(x=>x.part?`<button type="button" class="${x.ok?"have":"miss"}" data-part-detail="${esc(partId(x.part))}" title="點開零件實物圖與原廠來源">${x.ok?"✓":"○"} ${esc(x.name)}</button>`:`<span class="${x.ok?"have":"miss"}">${x.ok?"✓":"○"} ${esc(x.name)}</span>`).join("")}</div>'''
+          one(old,new,'reco clickable chips')
+
+          old='''    const shownRows=rows.slice(0,limit);\n    box.querySelectorAll("[data-reco-apply]").forEach(btn=>btn.addEventListener("click",()=>applyBladeReco(shownRows[Number(btn.dataset.recoApply)])));'''
+          new='''    const shownRows=rows.slice(0,limit);\n    box.querySelectorAll("[data-part-detail]").forEach(btn=>btn.addEventListener("click",()=>{\n      const [slot,key]=btn.dataset.partDetail.split(":");\n      const part=(state.parts[slot]||[]).find(x=>x.key===key) || Object.values(state.selected).find(x=>x && partId(x)===btn.dataset.partDetail);\n      if(part) showPartDetail(part);\n    }));\n    box.querySelectorAll("[data-reco-apply]").forEach(btn=>btn.addEventListener("click",()=>applyBladeReco(shownRows[Number(btn.dataset.recoApply)])));'''
+          one(old,new,'reco detail handler')
+
+          # Add a small hint in the part detail source heading and bump version.
+          s=s.replace('<div class="detailSection"><h3>收錄商品</h3>','<div class="detailSection"><h3>收錄商品｜點商品可看原廠整顆</h3>',1)
+          s=s.replace('>V23.7</span>','>V23.8</span>',1)
+
+          p.write_text(s,encoding='utf-8')
+          print('patched',len(s))
+          PY
+
+          grep -q 'garagePartSourceLabels' index.html
+          grep -q 'data-part-detail' index.html
+          grep -q '點商品可看原廠整顆' index.html
+          grep -q 'V23.8' index.html
+
+      - name: Commit patch to site branch
+        shell: bash
+        run: |
+          git config user.name "godsiman"
+          git config user.email "120441322+godsiman@users.noreply.github.com"
+          git add index.html
+          git commit -m "V23.8 add localized clickable part source links" || exit 0
+          git push origin HEAD:beyblade-x-site
