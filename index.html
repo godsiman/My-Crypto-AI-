@@ -597,6 +597,7 @@
     .autoBuildRegionTabs button{border:0;border-radius:8px;padding:9px 10px;background:transparent;color:#98a5b4;font-size:10px;font-weight:900}
     .autoBuildRegionTabs button.active{background:#24303e;color:#fff;box-shadow:inset 0 0 0 1px #3a495b}
     .autoBuildRegionTabs button[data-auto-region="taiwan"].active{background:#123127;color:#7ce5ba;box-shadow:inset 0 0 0 1px rgba(41,211,145,.38)}
+    .autoBuildModeTabs button[data-auto-mode="theory"].active{background:#332914;color:#ffe08a;box-shadow:inset 0 0 0 1px rgba(255,208,90,.38)}
     .evidenceMeta{color:#7ce5ba!important;border-color:rgba(41,211,145,.3)!important;background:rgba(41,211,145,.06)!important}
     .evidenceTheory{color:#ffe08a!important;border-color:rgba(255,208,90,.3)!important;background:rgba(255,208,90,.06)!important}
     .autoBuildResults{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -790,7 +791,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.8</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.9</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1173,12 +1174,16 @@
         <div>
           <div class="eyebrow">AUTO BUILD TOP 10</div>
           <h2>你的零件最佳配法</h2>
-          <p id="autoBuildDesc">按「幫我配前 10 名」後，優先使用實際賽場配裝；不足 10 組時再用理論能力補位。</p>
+          <p id="autoBuildDesc">先選「實戰最佳」或「理論最佳」，再用你目前擁有的零件排出前 10 名。</p>
         </div>
         <div class="autoBuildLegend">
           <span class="evidenceMeta">賽場實證</span>
-          <span class="evidenceTheory">理論補位</span>
+          <span class="evidenceTheory">理論能力</span>
         </div>
+      </div>
+      <div id="autoBuildModeTabs" class="autoBuildRegionTabs autoBuildModeTabs" aria-label="Auto Build 推薦方式">
+        <button type="button" class="active" data-auto-mode="battle">🏆 實戰最佳</button>
+        <button type="button" data-auto-mode="theory">🧪 理論最佳</button>
       </div>
       <div id="autoBuildRegionTabs" class="autoBuildRegionTabs" aria-label="Auto Build 賽場地區">
         <button type="button" class="active" data-auto-region="global">🌍 全球賽場</button>
@@ -1860,6 +1865,7 @@ const OFFICIAL_RECENT = [
     recoShowAll:false,
     garageItems:safeJsonArray("beyx-garage"),
     garageResults:[],
+    autoBuildMode:safeStoreGet("beyx-auto-mode","battle") || "battle",
     autoBuildRegion:safeStoreGet("beyx-auto-region","global") || "global"
   };
 
@@ -4134,17 +4140,20 @@ const OFFICIAL_RECENT = [
       candidates.push({blade,ratchet,bit,kind,score:score-missing.length*120,evidence,missing,key});
     };
 
+    const autoMode=state.autoBuildMode==="theory"?"theory":"battle";
     const autoRegion=state.autoBuildRegion==="taiwan"?"taiwan":"global";
-    for(const blade of blades){
-      if(autoRegion==="global"){
-        for(const b of globalRecoBuilds(blade)){
-          const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
-          if(bit) addCandidate(blade,r,bit,"meta",metaScoreForCandidate(blade,b),`全球賽場：${b.evidence||""}`);
-        }
-      }else{
-        for(const b of taiwanRecoBuilds(blade)){
-          const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
-          if(bit) addCandidate(blade,r,bit,"taiwan",760-b.rank*8,`台灣實戰：${b.evidence||""}`);
+    if(autoMode==="battle"){
+      for(const blade of blades){
+        if(autoRegion==="global"){
+          for(const b of globalRecoBuilds(blade)){
+            const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
+            if(bit) addCandidate(blade,r,bit,"meta",metaScoreForCandidate(blade,b),`全球賽場：${b.evidence||""}`);
+          }
+        }else{
+          for(const b of taiwanRecoBuilds(blade)){
+            const r=b.ratchet?findPart("ratchet",b.ratchet):null, bit=b.bit?findPart("bit",b.bit):null;
+            if(bit) addCandidate(blade,r,bit,"taiwan",760-b.rank*8,`台灣實戰：${b.evidence||""}`);
+          }
         }
       }
     }
@@ -4153,7 +4162,7 @@ const OFFICIAL_RECENT = [
       const local=[];
       for(const r of ratchets) for(const bit of bits) local.push({r,bit,score:theoryScoreParts(blade,r,bit)});
       local.sort((a,b)=>b.score-a.score);
-      for(const x of local.slice(0,12)) addCandidate(blade,x.r,x.bit,"theory",x.score,`${typeLabelZh(blade.type)}型理論能力補位`);
+      for(const x of local.slice(0,12)) addCandidate(blade,x.r,x.bit,"theory",x.score,autoMode==="theory"?`${typeLabelZh(blade.type)}型｜純理論能力排序`:`${typeLabelZh(blade.type)}型理論能力補位`);
     }
     candidates.sort((a,b)=>b.score-a.score);
     return candidates;
@@ -4173,9 +4182,13 @@ const OFFICIAL_RECENT = [
       chosen.push(c);
     }
     state.garageResults=chosen; renderGarageResults();
+    const autoMode=state.autoBuildMode==="theory"?"theory":"battle";
     const regionLabel=state.autoBuildRegion==="taiwan"?"台灣實戰":"全球賽場";
-    $("#autoBuildDesc").textContent=`${unique?"零件不重複・可同時組裝":"可重複・候選配法"}｜${regionLabel}｜共找到 ${chosen.length} 組；該賽場資料不足時再用理論能力補位。`;
-    toast(`已排出 ${chosen.length} 組｜${regionLabel}`);
+    const modeLabel=autoMode==="theory"?"理論最佳":"實戰最佳";
+    $("#autoBuildDesc").textContent=autoMode==="theory"
+      ? `${unique?"零件不重複・可同時組裝":"可重複・候選配法"}｜${modeLabel}｜共找到 ${chosen.length} 組；只依你目前零件的理論能力排序，不使用賽場資料。`
+      : `${unique?"零件不重複・可同時組裝":"可重複・候選配法"}｜${modeLabel}｜${regionLabel}｜共找到 ${chosen.length} 組；賽場資料不足時再用理論能力補位。`;
+    toast(`已排出 ${chosen.length} 組｜${modeLabel}${autoMode==="battle"?"｜"+regionLabel:""}`);
   }
 
   function applyGarageCandidate(index){
@@ -4198,7 +4211,7 @@ const OFFICIAL_RECENT = [
       const bladeSource=garagePartSourceLabel(c.blade,inv);
       const ratchetSource=c.ratchet?garagePartSourceLabel(c.ratchet,inv):bladeSource;
       const bitSource=garagePartSourceLabel(c.bit,inv);
-      const kind=c.kind==="theory"?"理論補位":c.kind==="taiwan"?"台灣實戰":"全球賽場";
+      const kind=c.kind==="theory"?(state.autoBuildMode==="theory"?"理論最佳":"理論補位"):c.kind==="taiwan"?"台灣實戰":"全球賽場";
       const cls=c.kind==="theory"?"evidenceTheory":"evidenceMeta";
       return `<article class="autoBuildCard">
         <div class="autoBuildTop"><span class="autoBuildRank">#${i+1}</span><span class="autoBuildEvidence ${cls}">${kind}</span></div>
@@ -5010,19 +5023,40 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
     }
   });
   $("#garageGenerate").addEventListener("click",generateGarageBuilds);
+  const autoModeTabs=$("#autoBuildModeTabs");
   const autoRegionTabs=$("#autoBuildRegionTabs");
+  const syncAutoBuildControls=()=>{
+    if(!["battle","theory"].includes(state.autoBuildMode)) state.autoBuildMode="battle";
+    autoModeTabs?.querySelectorAll("[data-auto-mode]").forEach(b=>b.classList.toggle("active",b.dataset.autoMode===state.autoBuildMode));
+    autoRegionTabs?.querySelectorAll("[data-auto-region]").forEach(b=>b.classList.toggle("active",b.dataset.autoRegion===state.autoBuildRegion));
+    if(autoRegionTabs) autoRegionTabs.hidden=state.autoBuildMode==="theory";
+  };
+  syncAutoBuildControls();
+  if(autoModeTabs){
+    autoModeTabs.addEventListener("click",e=>{
+      const btn=e.target.closest("[data-auto-mode]"); if(!btn) return;
+      const next=btn.dataset.autoMode; if(!["battle","theory"].includes(next)) return;
+      const hadResults=(state.garageResults||[]).length>0;
+      state.autoBuildMode=next; safeStoreSet("beyx-auto-mode",next); syncAutoBuildControls();
+      if(hadResults) generateGarageBuilds();
+      else{
+        state.garageResults=[]; renderGarageResults();
+        $("#autoBuildDesc").textContent=next==="theory"
+          ? '已選「理論最佳」；只用你目前零件的能力值排序，按「幫我配前 10 名」開始。'
+          : `已選「實戰最佳」；目前使用 ${state.autoBuildRegion==="taiwan"?"台灣實戰":"全球賽場"} 資料，按「幫我配前 10 名」開始。`;
+      }
+    });
+  }
   if(autoRegionTabs){
-    const syncAutoRegion=()=>autoRegionTabs.querySelectorAll("[data-auto-region]").forEach(b=>b.classList.toggle("active",b.dataset.autoRegion===state.autoBuildRegion));
-    syncAutoRegion();
     autoRegionTabs.addEventListener("click",e=>{
       const btn=e.target.closest("[data-auto-region]"); if(!btn) return;
       const next=btn.dataset.autoRegion; if(!["global","taiwan"].includes(next)) return;
       const hadResults=(state.garageResults||[]).length>0;
-      state.autoBuildRegion=next; safeStoreSet("beyx-auto-region",next); syncAutoRegion();
+      state.autoBuildRegion=next; safeStoreSet("beyx-auto-region",next); syncAutoBuildControls();
       if(hadResults) generateGarageBuilds();
       else{
         state.garageResults=[]; renderGarageResults();
-        $("#autoBuildDesc").textContent=`已選 ${next==="taiwan"?"台灣實戰":"全球賽場"}；按「幫我配前 10 名」開始排序。`;
+        $("#autoBuildDesc").textContent=`已選「實戰最佳」｜${next==="taiwan"?"台灣實戰":"全球賽場"}；按「幫我配前 10 名」開始排序。`;
       }
     });
   }
