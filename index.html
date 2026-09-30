@@ -570,6 +570,7 @@
     .garageToggle b{display:block;font-size:11px}
     .garageToggle small{display:block;color:#8592a2;font-size:9px;line-height:1.45;margin-top:3px}
     .garageActionRow{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 16px}
+    .garageDangerHint{flex-basis:100%;color:#7f8b99;font-size:8px;line-height:1.4}
     .garageColumns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
     .garagePanel{padding:14px}
     .garagePanelHead{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px}
@@ -793,7 +794,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.10</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.11</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1146,6 +1147,8 @@
 
       <div class="garageActionRow">
         <button id="garageClear" class="btn" type="button">清空我的陀螺</button>
+        <button id="garageRestore" class="btn" type="button" hidden>↩ 復原上次清空</button>
+        <span class="garageDangerHint">清空前會再次確認，並自動保留一份可復原備份。</span>
       </div>
     </section>
 
@@ -5064,8 +5067,31 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
       }
     });
   }
+  const garageRestoreBtn=$("#garageRestore");
+  const garageBackupItems=()=>safeJsonArray("beyx-garage-backup");
+  const syncGarageRestore=()=>{ if(garageRestoreBtn) garageRestoreBtn.hidden=!garageBackupItems().length; };
+  syncGarageRestore();
   $("#garageClear").addEventListener("click",()=>{
-    state.garageItems=[]; state.garageResults=[]; garageSave(); renderGarage(); toast("已清空我的陀螺");
+    if(!state.garageItems.length){ toast("目前沒有陀螺可清空"); return; }
+    const count=garageExpandedBeys().length;
+    const ok=window.confirm(`確定要清空目前 ${count} 顆陀螺嗎？\n\n清空前會自動備份；如果按錯，可用「復原上次清空」找回。`);
+    if(!ok) return;
+    safeStoreSet("beyx-garage-backup",JSON.stringify(state.garageItems));
+    state.garageItems=[]; state.garageResults=[]; garageSave(); renderGarage(); syncGarageRestore();
+    toast("已清空；可按「復原上次清空」找回");
+  });
+  garageRestoreBtn?.addEventListener("click",()=>{
+    const backup=garageBackupItems();
+    if(!backup.length){ syncGarageRestore(); toast("目前沒有可復原的備份"); return; }
+    if(state.garageItems.length){
+      const currentCount=garageExpandedBeys().length;
+      const ok=window.confirm(`目前清單已有 ${currentCount} 顆。\n\n復原會用上次清空前的清單取代目前內容，確定繼續嗎？`);
+      if(!ok) return;
+    }
+    state.garageItems=backup; state.garageResults=[]; garageSave();
+    safeStoreSet("beyx-garage-backup","[]");
+    renderGarage(); syncGarageRestore();
+    toast("已復原上次清空前的陀螺清單");
   });
   $("#garageUniqueParts").addEventListener("change",()=>{state.garageResults=[];renderGarageResults();});
   $("#garageOnlyOwned").addEventListener("change",()=>{state.garageResults=[];renderGarageResults();});
