@@ -1,0 +1,46 @@
+name: Fix Garage owned status
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.garage-owned-status-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beyblade-x-site
+          fetch-depth: 0
+      - name: Patch ownership logic
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old='function owned(p){ return p && state.owned.has(partId(p)); }'
+          new='function owned(p){ if(!p) return false; const id=partId(p); if(state.owned.has(id)) return true; try{return (garageInventory().get(id)?.qty||0)>0;}catch(e){return false;} }'
+          if s.count(old)!=1:
+              raise SystemExit(f'owned function expected 1 match, got {s.count(old)}')
+          s=s.replace(old,new,1)
+          s=s.replace('✓ 你現有零件可直接組','✓ 你現有零件足夠，可直接組')
+          s=s.replace("'✓ 可直接組'","'✓ 足夠零件'")
+          s=s.replace('>V23.5</span>','>V23.7</span>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -q 'garageInventory().get(id)' index.html
+          grep -q '足夠零件' index.html
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "godsiman"
+          git config user.email "120441322+godsiman@users.noreply.github.com"
+          git add index.html
+          git commit -m "V23.7 unify Garage ownership with Current Build" || exit 0
+          git push origin HEAD:beyblade-x-site
