@@ -808,7 +808,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.12</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.13</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1815,6 +1815,19 @@ const SPECIAL_PRODUCTS = [
     image:"https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BXG70_list.png",
     official:"https://beyblade.takaratomy.co.jp/beyblade-x/lineup/cx00-tiga.html",
     parts:{lock:"TIGA",metal:"RAGE",over:"F",assist:"T",ratchet:"3-60",bit:"T"},
+    partLabels:{
+      lock:"Lock Chip 紋章｜迪卡",
+      metal:"Metal Blade 金屬刃｜狂怒 Rage",
+      over:"Over Blade 外環｜F",
+      assist:"Assist Blade 輔刃｜T",
+      ratchet:"Ratchet 齒輪｜3-60｜3刃・6.0mm",
+      bit:"Bit 軸心｜T｜錐軸"
+    },
+    partVariantIds:{
+      lock:"BL-PRD-080545-01",metal:"BL-PRD-080638-01",over:"BL-PRD-080679-01",
+      assist:"BL-PRD-080683-01",ratchet:"BL-PRD-080639-01",bit:"BL-PRD-080640-01"
+    },
+    exactParts:true,
     note:"超人力霸王迪卡聯名；可換色重現 Multi / Sky / Power 三種型態。"
   },
   {
@@ -3883,17 +3896,18 @@ const OFFICIAL_RECENT = [
     toast("已打開完整原廠陀螺");
   }
 
-  function showPartDetail(p){
+  function showPartDetail(p,context=null){
     const meta=metaForPart(p);
-    const src=findImage(p);
+    const src=context?.image || (context?.strictImage ? "" : findImage(p));
+    const detailTitle=context?.label || (p.zh||p.en);
     const st=p.status||{};
     const statPairs=[["攻擊",st.attack],["防禦",st.defense],["持久",st.stamina],["X衝刺",st.dash],["抗爆",st.burst],["高度",st.height]];
     $("#dialogContent").innerHTML=`<div class="detailLayout">
-      <div class="detailVisual">${src?`<img src="${esc(src)}" alt="${esc(p.zh||p.en)}">`:`<div class="fallback">目前沒有可用實物圖<br>${esc(p.en)}</div>`}</div>
+      <div class="detailVisual">${src?`<img src="${esc(src)}" alt="${esc(detailTitle)}">`:`<div class="fallback">${context?.strictImage?"此商品的專屬配色零件圖尚未核對<br>不以其他商品圖片代替":"目前沒有可用實物圖"}<br>${esc(p.en)}</div>`}</div>
       <div class="detailInfo">
         <div class="eyebrow">${esc(LABELS[p.slot])}</div>
-        <div class="detailTitle">${esc(p.zh||p.en)}</div>
-        <div class="detailEn">${esc(p.en)} · ${esc(TYPE_ZH[p.type]||p.type||"—")} · 發售 ${esc(formatRelease(p))}</div>
+        <div class="detailTitle">${esc(detailTitle)}</div>
+        <div class="detailEn">${context?.product?`${esc(context.product)} · `:""}${esc(p.en)} · ${esc(TYPE_ZH[p.type]||p.type||"—")} · 發售 ${esc(formatRelease(p))}</div>
         <div class="productLineRow" style="margin-top:10px">${productCodesForPart(p).length?productCodesForPart(p).map(c=>`<span class="productCode ${productCodeClass(c)}">${esc(c)}</span>`).join(""):`<span class="productCode">商品碼待補</span>`}</div>
         <div class="detailDesc">${esc(p.description||"目前沒有說明資料。")}</div>
         <div class="detailStats">${statPairs.map(([n,v])=>`<div class="detailStat"><small>${n}</small><b>${Number(v)||0}</b></div>`).join("")}</div>
@@ -3936,7 +3950,7 @@ const OFFICIAL_RECENT = [
       out.push({id:"stock:"+b.id,kind:"stock",ref:b.id,label:`${b.code}｜${b.combo}【${stockTypeLabel(b)}】`,code:b.code,title:b.combo,image:wholeImageForStock(b),parts:b.parts});
     }
     for(const sp of SPECIAL_PRODUCTS){
-      out.push({id:"special:"+sp.id,kind:"special",ref:sp.id,label:`${sp.code}｜${sp.title}【${specialTypeLabel(sp)}】`,code:sp.code,title:sp.title,image:sp.image,parts:resolvePartMap(sp.parts||{}),integrated:!!sp.ratchetIntegrated});
+      out.push({id:"special:"+sp.id,kind:"special",ref:sp.id,label:`${sp.code}｜${sp.title}【${specialTypeLabel(sp)}】`,code:sp.code,title:sp.title,image:sp.image,parts:resolvePartMap(sp.parts||{}),partSpec:sp.parts||{},partImages:sp.partImages||{},partLabels:sp.partLabels||{},partVariantIds:sp.partVariantIds||{},exactParts:!!sp.exactParts,official:sp.official||"",integrated:!!sp.ratchetIntegrated});
     }
     for(const set of SPECIAL_SETS){
       out.push({id:"set:"+set.id,kind:"set",ref:set.id,label:`${set.code}｜${set.title}（整盒 ${set.beys.length} 顆）`,code:set.code,title:set.title,image:set.image,set});
@@ -3944,7 +3958,7 @@ const OFFICIAL_RECENT = [
         out.push({
           id:`setbey:${set.id}:${bey.id}`,kind:"setbey",ref:set.id,beyId:bey.id,
           label:`${set.code}｜[單顆] ${bey.name}【${setBeyTypeLabel(bey)}】`,code:set.code,title:bey.name,image:bey.image,
-          parts:resolvePartMap(bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit}),integrated:!!bey.ratchetIntegrated
+          parts:resolvePartMap(bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit}),partSpec:bey.parts||{blade:bey.blade,ratchet:bey.ratchet,bit:bey.bit},partImages:bey.partImages||{},partLabels:bey.partLabels||{},setId:set.id,beyId:bey.id,official:set.official||"",integrated:!!bey.ratchetIntegrated
         });
       }
     }
@@ -4081,6 +4095,31 @@ const OFFICIAL_RECENT = [
     });
   }
 
+  function garageEntryPartLabel(entry,slot,p){
+    return entry?.partLabels?.[slot] || `${LABELS[slot]||slot}｜${displayNameForPart(p)}`;
+  }
+
+  function garageEntryPartImage(entry,slot,p){
+    if(!entry || !p) return "";
+    if(entry.partImages?.[slot]) return entry.partImages[slot];
+
+    // UX-21 has verified product-specific official part images.
+    if(entry.kind==="setbey"){
+      if(entry.beyId==="UX21-01" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_02%401.png";
+      if(entry.beyId==="UX21-01" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_04%401.png";
+      if(entry.beyId==="UX21-02" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_05%401.png";
+      if(entry.beyId==="UX21-02" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_08%401.png";
+      if(entry.beyId==="UX21-03" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_09%401.png";
+      if(entry.beyId==="UX21-03" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_12%401.png";
+    }
+
+    // Special / collaboration products must never borrow a generic same-code image
+    // from another Bey. If the product-specific picture is not verified, show no
+    // picture rather than a misleading colour/shape.
+    if(entry.kind==="special" || entry.kind==="setbey") return "";
+    return findImage(p);
+  }
+
   function showGarageBeyDetail(entry){
     if(!entry) return;
     const dlg=$("#partDialog");
@@ -4098,9 +4137,14 @@ const OFFICIAL_RECENT = [
 
     const rows=garageEntryPartRows(entry);
     const structure=entry.integrated?"UX Expand／Ratchet 一體結構":rows.some(([slot])=>["lock","main","assist"].includes(slot))?"CX 可拆上蓋結構":"BX / UX 標準結構";
-    content.innerHTML=`<div class="beyDetailHero"><div class="beyDetailWhole">${entry.image?`<img src="${esc(entry.image)}" alt="${esc(entry.title)}">`:`<div class="fallback">目前沒有整顆圖片</div>`}</div><div class="beyDetailTitle"><div class="eyebrow">MY BEY / ORIGINAL PARTS</div><h2>${esc(entry.code)}｜${esc(entry.title)}</h2><p>${esc(structure)}</p><div class="detailDesc">點下面任一零件，可看零件實物圖、能力資料，以及還有哪些原廠陀螺也有這個零件。</div></div></div><div class="beyDetailParts">${rows.map(([slot,p],i)=>{const src=findImage(p);return `<button type="button" class="beyPartCard" data-beypart="${i}"><div class="beyPartImg">${src?`<img src="${esc(src)}" alt="${esc(displayNameForPart(p))}">`:`<span class="fallback">無圖</span>`}</div><strong>${esc(LABELS[slot]||slot)}｜${esc(displayNameForPart(p))}</strong><small>${esc(typeLabelZh(p.type)||"")}</small></button>`}).join("")}</div><div class="beyDetailNote">這裡顯示的是這顆原廠配置；你之後改裝過的配法不會覆蓋原廠零件資料。</div>`;
+    const strictProductImages=entry.kind==="special" || entry.kind==="setbey";
+    content.innerHTML=`<div class="beyDetailHero"><div class="beyDetailWhole">${entry.image?`<img src="${esc(entry.image)}" alt="${esc(entry.title)}">`:`<div class="fallback">目前沒有整顆圖片</div>`}</div><div class="beyDetailTitle"><div class="eyebrow">MY BEY / ORIGINAL PARTS</div><h2>${esc(entry.code)}｜${esc(entry.title)}</h2><p>${esc(structure)}</p><div class="detailDesc">${strictProductImages?"上方優先顯示這個商品自己的官方整顆／拆件素材；下方零件只有核對到商品專屬圖片才顯示，不會再拿別顆同代號零件的配色圖代替。":"點下面任一零件，可看零件實物圖、能力資料，以及還有哪些原廠陀螺也有這個零件。"}</div></div></div><div class="beyDetailParts">${rows.map(([slot,p],i)=>{const src=garageEntryPartImage(entry,slot,p),label=garageEntryPartLabel(entry,slot,p),vid=entry.partVariantIds?.[slot]||"";return `<button type="button" class="beyPartCard" data-beypart="${i}"><div class="beyPartImg">${src?`<img src="${esc(src)}" alt="${esc(label)}">`:`<span class="fallback">此商品專屬配色圖<br>尚未核對</span>`}</div><strong>${esc(label)}</strong><small>${esc(vid?`原廠分件 ${vid}`:(typeLabelZh(p.type)||""))}</small></button>`}).join("")}</div><div class="beyDetailNote">這裡只顯示這顆原廠配置。特殊／限定配色若沒有商品專屬零件圖，就留白標示，不再用其他商品的共用圖冒充。</div>`;
     content.querySelectorAll("[data-beypart]").forEach(btn=>btn.addEventListener("click",()=>{
-      const row=rows[Number(btn.dataset.beypart)]; if(row?.[1]) showPartDetail(row[1]);
+      const row=rows[Number(btn.dataset.beypart)];
+      if(row?.[1]){
+        const [slot,p]=row;
+        showPartDetail(p,{image:garageEntryPartImage(entry,slot,p),strictImage:strictProductImages,label:garageEntryPartLabel(entry,slot,p),product:`${entry.code}｜${entry.title}`});
+      }
     }));
     if(typeof dlg.showModal==="function" && !dlg.open) dlg.showModal(); else dlg.setAttribute("open","");
   }
