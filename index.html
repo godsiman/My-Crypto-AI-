@@ -808,7 +808,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.14</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.15</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -4113,6 +4113,15 @@ const OFFICIAL_RECENT = [
     if(!entry || !p) return "";
     if(entry.partImages?.[slot]) return entry.partImages[slot];
 
+    // BX-49 DranStrike 4-50FF: verified TAKARA TOMY product-specific part images.
+    // The generic 4-50 image in the shared parts DB uses a different colourway,
+    // so My Bey detail must bind to this product's actual blue/white 4-50.
+    if(entry.code==="BX-49"){
+      if(slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_01_list.png";
+      if(slot==="ratchet") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_03_list.png";
+      if(slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_04_list.png";
+    }
+
     // UX-21 has verified product-specific official part images.
     if(entry.kind==="setbey"){
       if(entry.beyId==="UX21-01" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_02%401.png";
@@ -4147,7 +4156,7 @@ const OFFICIAL_RECENT = [
 
     const rows=garageEntryPartRows(entry);
     const structure=entry.integrated?"UX Expand／Ratchet 一體結構":rows.some(([slot])=>["lock","main","assist"].includes(slot))?"CX 可拆上蓋結構":"BX / UX 標準結構";
-    const strictProductImages=entry.kind==="special" || entry.kind==="setbey";
+    const strictProductImages=entry.kind==="special" || entry.kind==="setbey" || entry.code==="BX-49";
     content.innerHTML=`<div class="beyDetailHero"><div class="beyDetailWhole">${entry.image?`<img src="${esc(entry.image)}" alt="${esc(entry.title)}">`:`<div class="fallback">目前沒有整顆圖片</div>`}</div><div class="beyDetailTitle"><div class="eyebrow">MY BEY / ORIGINAL PARTS</div><h2>${esc(entry.code)}｜${esc(entry.title)}</h2><p>${esc(structure)}</p><div class="detailDesc">${strictProductImages?"上方優先顯示這個商品自己的官方整顆／拆件素材；下方零件只有核對到商品專屬圖片才顯示，不會再拿別顆同代號零件的配色圖代替。":"點下面任一零件，可看零件實物圖、能力資料，以及還有哪些原廠陀螺也有這個零件。"}</div></div></div><div class="beyDetailParts">${rows.map(([slot,p],i)=>{const src=garageEntryPartImage(entry,slot,p),label=garageEntryPartLabel(entry,slot,p),vid=entry.partVariantIds?.[slot]||"";return `<button type="button" class="beyPartCard" data-beypart="${i}"><div class="beyPartImg">${src?`<img src="${esc(src)}" alt="${esc(label)}">`:`<span class="fallback">此商品專屬配色圖<br>尚未核對</span>`}</div><strong>${esc(label)}</strong><small>${esc(vid?`原廠分件 ${vid}`:(typeLabelZh(p.type)||""))}</small></button>`}).join("")}</div><div class="beyDetailNote">這裡只顯示這顆原廠配置。特殊／限定配色若沒有商品專屬零件圖，就留白標示，不再用其他商品的共用圖冒充。</div>`;
     content.querySelectorAll("[data-beypart]").forEach(btn=>btn.addEventListener("click",()=>{
       const row=rows[Number(btn.dataset.beypart)];
