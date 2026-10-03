@@ -808,7 +808,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.16</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.17</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -1300,7 +1300,7 @@
 
   <footer>
     零件資料：BeyBrew 公開資料檔（由 BEYBLADE X app MasterData 整理）；圖片：Beyblade-X-Parts-Image-Database（包含零件圖與 BX / UX / CX 官方整顆商品素材）。賽場推薦：Beycrate 近 3 個月 WBO 主辦方回報的頒獎台組合快照；零件列表上的綠色百分比採 2026 年 9 月 Beywatch Top Cut 使用率（只在已公開數據的零件上顯示）。<br>
-    本頁為非官方配裝工具。全球推薦使用 Beycrate / WBO podium 資料；台灣實戰推薦參考 BeybladeHub 公開的 G1/G3/地方賽紀錄。原廠商品配色圖優先使用該商品本身的官方素材；改裝後若沒有官方整顆合成圖，不假造不存在的整顆照片。2026/8–10 新品已重新以 TAKARA TOMY 官方商品頁核對：BX-00 蒼龍神劍 V2、UX-21、UX-00 藍色榮耀女武神、EVA Deck Set、CX-00 迪卡狂怒、CX-19、BX-52、BX-53；CX/EVA 的細部分件名稱另以玩家資料庫交叉核對。
+    本頁為非官方配裝工具。全球推薦使用 Beycrate / WBO podium 資料；台灣實戰推薦參考 BeybladeHub 公開的 G1/G3/地方賽紀錄。原廠商品配色圖優先使用該商品本身的官方素材；改裝後若沒有官方整顆合成圖，不假造不存在的整顆照片。2026/8–10 新品已重新以 TAKARA TOMY 官方商品頁核對：BX-00 蒼龍神劍 V2、UX-21、UX-00 藍色榮耀女武神、EVA Deck Set、CX-00 迪卡狂怒、CX-19、BX-52、BX-53；CX/EVA 的細部分件名稱另以玩家資料庫交叉核對。Random Booster／Select 已另建完整 01／02／03…子款目錄核對，避免換色復刻零件因舊 model_name 被漏掉。
   </footer>
 </div>
 
@@ -1856,6 +1856,234 @@ const SPECIAL_PRODUCTS = [
   }
 ];
 
+
+// Complete Random Booster / Select catalog audit.
+// IMPORTANT: old app MasterData stores recoloured reprints under the ORIGINAL model_name,
+// so relying on model_name alone drops variants such as CX-08-04/-05/-06.
+// This registry is the product-level source of truth for blind-pack membership and suffixes.
+const RANDOM_BOOSTER_CATALOG = [
+  {code:"BX-14",name:"Random Booster Vol.1",count:6,variants:[
+    {n:"01",parts:{blade:"SHARKEDGE",ratchet:"3-60",bit:"LF"}},
+    {n:"02",parts:{blade:"SHARKEDGE",ratchet:"4-80",bit:"N"}},
+    {n:"03",parts:{blade:"DRANSWORD",ratchet:"3-80",bit:"B"}},
+    {n:"04",parts:{blade:"HELLSCYTHE",ratchet:"4-80",bit:"LF"}},
+    {n:"05",parts:{blade:"KNIGHTSHIELD",ratchet:"4-60",bit:"LF"}},
+    {n:"06",parts:{blade:"WIZARDARROW",ratchet:"3-60",bit:"T"}}
+  ]},
+  {code:"BX-16",name:"Viper Tail Select",count:3,variants:[
+    {n:"01",parts:{blade:"VIPERTAIL",ratchet:"5-80",bit:"O"}},
+    {n:"02",parts:{blade:"VIPERTAIL",ratchet:"4-60",bit:"F"}},
+    {n:"03",parts:{blade:"VIPERTAIL",ratchet:"3-80",bit:"HN"}}
+  ]},
+  {code:"BX-24",name:"Random Booster Vol.2",count:6,variants:[
+    {n:"01",parts:{blade:"WYVERNGALE",ratchet:"5-80",bit:"GB"}},
+    {n:"02",parts:{blade:"WYVERNGALE",ratchet:"3-60",bit:"T"}},
+    {n:"03",parts:{blade:"KNIGHTLANCE",ratchet:"4-60",bit:"GB"}},
+    {n:"04",parts:{blade:"VIPERTAIL",ratchet:"5-60",bit:"F"}},
+    {n:"05",parts:{blade:"LEONCLAW",ratchet:"3-80",bit:"HN"}},
+    {n:"06",parts:{blade:"WIZARDARROW",ratchet:"4-80",bit:"GB"}}
+  ]},
+  {code:"BX-27",name:"Sphinx Cowl Select",count:3,variants:[
+    {n:"01",parts:{blade:"SPHINXCOWL",ratchet:"9-80",bit:"GN"}},
+    {n:"02",parts:{blade:"SPHINXCOWL",ratchet:"4-80",bit:"HT"}},
+    {n:"03",parts:{blade:"SPHINXCOWL",ratchet:"5-60",bit:"O"}}
+  ]},
+  {code:"BX-31",name:"Random Booster Vol.3",count:6,variants:[
+    {n:"01",parts:{blade:"TYRANNOBEAT",ratchet:"4-70",bit:"Q"}},
+    {n:"02",parts:{blade:"TYRANNOBEAT",ratchet:"3-60",bit:"S"}},
+    {n:"03",parts:{blade:"HELLSCHAIN",ratchet:"9-80",bit:"O"}},
+    {n:"04",parts:{blade:"DRANDAGGER",ratchet:"4-70",bit:"P"}},
+    {n:"05",parts:{blade:"SHARKEDGE",ratchet:"1-60",bit:"Q"}},
+    {n:"06",parts:{blade:"RHINOHORN",ratchet:"5-80",bit:"Q"}}
+  ]},
+  {code:"UX-05",name:"Shinobi Shadow Select",count:3,variants:[
+    {n:"01",parts:{blade:"SHINOBISHADOW",ratchet:"1-80",bit:"MN"}},
+    {n:"02",parts:{blade:"SHINOBISHADOW",ratchet:"9-60",bit:"LF"}},
+    {n:"03",parts:{blade:"SHINOBISHADOW",ratchet:"3-70",bit:"GP"}}
+  ]},
+  {code:"BX-35",name:"Random Booster Vol.4",count:6,variants:[
+    {n:"01",parts:{blade:"BLACKSHELL",ratchet:"4-60",bit:"D"}},
+    {n:"02",parts:{blade:"BLACKSHELL",ratchet:"9-80",bit:"B"}},
+    {n:"03",parts:{blade:"UNICORNSTING",ratchet:"3-70",bit:"D"}},
+    {n:"04",parts:{blade:"WIZARDROD",ratchet:"1-60",bit:"R"}},
+    {n:"05",parts:{blade:"PHOENIXWING",ratchet:"5-80",bit:"H"}},
+    {n:"06",parts:{blade:"VIPERTAIL",ratchet:"5-70",bit:"D"}}
+  ]},
+  {code:"BX-00",name:"Lightning L-Drago Random Booster",count:2,selector:"ldrago",variants:[
+    {n:"01",label:"Lightning L-Drago 1-60F（Upper Type）",ratchet:"1-60",bit:"F",hint:"upper"},
+    {n:"02",label:"Lightning L-Drago 1-60F（Rapid-Hit Type）",ratchet:"1-60",bit:"F",hint:"rapid"}
+  ]},
+  {code:"BX-36",name:"Whale Wave Select",count:3,variants:[
+    {n:"01",parts:{blade:"WHALEWAVE",ratchet:"5-80",bit:"E"}},
+    {n:"02",parts:{blade:"WHALEWAVE",ratchet:"4-70",bit:"HN"}},
+    {n:"03",parts:{blade:"WHALEWAVE",ratchet:"3-80",bit:"GB"}}
+  ]},
+  {code:"UX-12",name:"Random Booster Vol.5",count:6,variants:[
+    {n:"01",parts:{blade:"GHOSTCIRCLE",ratchet:"0-80",bit:"GB"}},
+    {n:"02",parts:{blade:"GHOSTCIRCLE",ratchet:"4-60",bit:"H"}},
+    {n:"03",parts:{blade:"SHINOBISHADOW",ratchet:"3-80",bit:"F"}},
+    {n:"04",parts:{blade:"LEONCLAW",ratchet:"0-80",bit:"E"}},
+    {n:"05",parts:{blade:"PHOENIXFEATHER",ratchet:"2-60",bit:"N"}},
+    {n:"06",parts:{blade:"WYVERNGALE",ratchet:"0-80",bit:"C"}}
+  ]},
+  {code:"BX-39",name:"Shelter Drake Select",count:3,variants:[
+    {n:"01",parts:{blade:"SHELTERDRAKE",ratchet:"7-80",bit:"GP"}},
+    {n:"02",parts:{blade:"SHELTERDRAKE",ratchet:"5-70",bit:"O"}},
+    {n:"03",parts:{blade:"SHELTERDRAKE",ratchet:"3-60",bit:"D"}}
+  ]},
+  {code:"CX-05",name:"Random Booster Vol.6",count:6,variants:[
+    {n:"01",ratchet:"4-70",bit:"K",hint:"reaper"},
+    {n:"02",ratchet:"4-55",bit:"D",hint:"reaper"},
+    {n:"03",ratchet:"3-85",bit:"O",hint:"arc"},
+    {n:"04",parts:{blade:"LEONCREST",ratchet:"9-80",bit:"K"}},
+    {n:"05",parts:{blade:"PHOENIXRUDDER",ratchet:"4-70",bit:"LF"}},
+    {n:"06",parts:{blade:"WHALEWAVE",ratchet:"7-60",bit:"K"}}
+  ]},
+  {code:"CX-06",name:"Fox Brush Select",count:3,variants:[
+    {n:"01",ratchet:"9-70",bit:"GR",hint:"fox"},
+    {n:"02",ratchet:"0-80",bit:"DB",hint:"fox"},
+    {n:"03",ratchet:"2-60",bit:"U",hint:"fox"}
+  ]},
+  {code:"CX-08",name:"Random Booster Vol.7",count:6,variants:[
+    {n:"01",label:"魔犬烈焰 W5-80WB",ratchet:"5-80",bit:"WB",hint:"cerberus"},
+    {n:"02",label:"巨鯨烈焰 M3-85HT",ratchet:"3-85",bit:"HT",hint:"whale"},
+    {n:"03",label:"魔犬幽冥 W1-60F",ratchet:"1-60",bit:"F",hint:"cerberus"},
+    {n:"04",label:"蒼龍爆刃 5-80MN",parts:{blade:"DRANBUSTER",ratchet:"5-80",bit:"MN"}},
+    {n:"05",label:"玄冥戰甲 7-70WB",parts:{blade:"BLACKSHELL",ratchet:"7-70",bit:"WB"}},
+    {n:"06",label:"蒼穹龍騎士 4-55WB",parts:{blade:"COBALTDRAGOON",ratchet:"4-55",bit:"WB"},left:true}
+  ]},
+  {code:"UX-16",name:"Clock Mirage Select",count:3,sameCombo:true,variants:[
+    {n:"01",parts:{blade:"CLOCKMIRAGE",ratchet:"9-65",bit:"B"},label:"時鐘幻象 9-65B（01）"},
+    {n:"02",parts:{blade:"CLOCKMIRAGE",ratchet:"9-65",bit:"B"},label:"時鐘幻象 9-65B（02）"},
+    {n:"03",parts:{blade:"CLOCKMIRAGE",ratchet:"9-65",bit:"B"},label:"時鐘幻象 9-65B（03）"}
+  ]},
+  {code:"UX-18",name:"Random Booster Vol.8",count:6,variants:[
+    {n:"01",parts:{blade:"MUMMYCURSE",ratchet:"7-55",bit:"W"}},
+    {n:"02",parts:{blade:"MUMMYCURSE",ratchet:"4-60",bit:"C"}},
+    {n:"03",ratchet:"3-85",bit:"W",hint:"pegasus"},
+    {n:"04",ratchet:"9-70",bit:"TP",hint:"sol"},
+    {n:"05",parts:{blade:"DRANDAGGER",ratchet:"7-55",bit:"G"}},
+    {n:"06",parts:{blade:"WEISSTIGER",ratchet:"4-80",bit:"LR"}}
+  ]},
+  {code:"BX-48",name:"Random Booster Vol.9",count:5,variants:[
+    {n:"01",parts:{blade:"COBALTDRAGOON",ratchet:"9-80",bit:"F"},left:true},
+    {n:"02",parts:{blade:"SHARKEDGE",ratchet:"4-70",bit:"E"}},
+    {n:"03",parts:{blade:"MAMMOTHTUSK",ratchet:"7-60",bit:"S"}},
+    {n:"04",parts:{blade:"HELLSCYTHE",ratchet:"3-85",bit:"GB"}},
+    {n:"05",parts:{blade:"DRANBUSTER",ratchet:"2-80",bit:"Q"}}
+  ]},
+  {code:"CX-17",name:"Random Booster Vol.10",count:6,variants:[
+    {n:"01",ratchet:"3-60",bit:"GU",hint:"unicorn"},
+    {n:"02",ratchet:"1-80",bit:"GR",hint:"unicorn"},
+    {n:"03",parts:{blade:"SAMURAISABER",ratchet:"9-65",bit:"LO"}},
+    {n:"04",parts:{blade:"HELLSHAMMER",ratchet:"3-85",bit:"GU"}},
+    {n:"05",parts:{blade:"TYRANNOBEAT",ratchet:"3-60",bit:"N"}},
+    {n:"06",parts:{blade:"CRIMSONGARUDA",ratchet:"7-80",bit:"GU"}}
+  ]},
+  {code:"CX-18",name:"Brachio Whip Select",count:3,sameCombo:true,variants:[
+    {n:"01",ratchet:"5-70",bit:"Nr",hint:"brachio",label:"Brachio Whip OW5-70Nr（01）"},
+    {n:"02",ratchet:"5-70",bit:"Nr",hint:"brachio",label:"Brachio Whip OW5-70Nr（02）"},
+    {n:"03",ratchet:"5-70",bit:"Nr",hint:"brachio",label:"Brachio Whip OW5-70Nr（03）"}
+  ]},
+  {code:"BX-50",name:"Random Booster Vol.11",count:6,variants:[
+    {n:"01",parts:{blade:"HEAVENSRING",ratchet:"0-80",bit:"DS"}},
+    {n:"02",parts:{blade:"HEAVENSRING",ratchet:"6-60",bit:"TP"}},
+    {n:"03",parts:{blade:"IMPACTDRAKE",ratchet:"7-55",bit:"FB"}},
+    {n:"04",parts:{blade:"GHOSTCIRCLE",ratchet:"M-85",bit:"DS"}},
+    {n:"05",ratchet:"9-65",bit:"L",hint:"wolf"},
+    {n:"06",ratchet:"0-80",bit:"WB",hint:"cerberus"}
+  ]},
+  {code:"CX-19",name:"Croco Tread Select",count:3,sameCombo:true,special:"SPECIAL:CX19",variants:[
+    {n:"01",label:"巨鱷碾壓 TQ5-50GN（01）"},
+    {n:"02",label:"巨鱷碾壓 TQ5-50GN（02）"},
+    {n:"03",label:"巨鱷碾壓 TQ5-50GN（03）"}
+  ]}
+];
+
+function randomBoosterPartKey(b,slot){ return b?.parts?.[slot]?.key || ""; }
+function randomBoosterCandidateText(b){ return norm([b?.title,b?.combo,b?.model].filter(Boolean).join(" ")); }
+function randomBoosterExistingMatch(candidates,v,used){
+  const possible=candidates.filter(b=>{
+    if(v.ratchet && randomBoosterPartKey(b,"ratchet")!==v.ratchet) return false;
+    if(v.bit && randomBoosterPartKey(b,"bit")!==v.bit) return false;
+    if(v.parts?.blade && randomBoosterPartKey(b,"blade")!==v.parts.blade) return false;
+    if(v.hint && !randomBoosterCandidateText(b).includes(norm(v.hint))) return false;
+    return true;
+  });
+  return possible.find(x=>!used.has(x.id)) || possible[0] || null;
+}
+function randomBoosterResolvedParts(v,existing,pack){
+  if(existing?.parts && Object.values(existing.parts).some(Boolean)) return existing.parts;
+  if(v.parts) return resolvePartMap(v.parts);
+  if(pack.special){
+    const sp=specialProductById(pack.special);
+    if(sp) return resolvePartMap(sp.parts||{});
+  }
+  return {};
+}
+function randomBoosterComboLabel(parts,v){
+  if(v.label) return v.label;
+  const primary=parts.blade || parts.lock || parts.main || parts.metal || null;
+  const name=primary ? displayNameForPart(primary) : "原廠配置";
+  const r=parts.ratchet?.en || v.ratchet || "";
+  const bit=parts.bit?.en || v.bit || "";
+  return [name,r,bit].filter(Boolean).join(" ");
+}
+function applyRandomBoosterCatalog(){
+  const original=state.stockBeys.slice();
+  const managed=new Set(RANDOM_BOOSTER_CATALOG.map(p=>p.code));
+  const keep=original.filter(b=>!managed.has(b.code));
+  const rebuilt=[];
+
+  for(const pack of RANDOM_BOOSTER_CATALOG){
+    let candidates=original.filter(b=>b.code===pack.code);
+    if(pack.selector==="ldrago") candidates=original.filter(b=>b.code==="BX-00" && /lightning|l-drago|エルドラゴ/i.test([b.title,b.combo,b.model].join(" ")));
+    const used=new Set();
+    for(const v of pack.variants){
+      let existing=randomBoosterExistingMatch(candidates,v,used);
+      if(existing) used.add(existing.id);
+      // Same-combo Select products intentionally clone the same mechanical config into 01/02/03 colour variants.
+      if(!existing && pack.sameCombo && candidates.length) existing=candidates[0];
+      const parts=randomBoosterResolvedParts(v,existing,pack);
+      const variantCode=`${pack.code}-${v.n}`;
+      const combo=randomBoosterComboLabel(parts,v) || existing?.combo || v.label || variantCode;
+      const line=pack.code.slice(0,2);
+      rebuilt.push({
+        ...(existing||{}),
+        id:`RB:${variantCode}`,
+        model:`RB:${variantCode}`,
+        code:variantCode,
+        baseCode:pack.code,
+        variantCode,
+        line,
+        num:Number(pack.code.split("-")[1])||0,
+        randomBooster:true,
+        randomPack:pack.name,
+        randomVariant:v.n,
+        leftSpin:!!v.left,
+        title:`${variantCode} ${combo}`,
+        combo,
+        parts,
+        // Do not borrow a whole-Bey image from the original product/recolour.
+        image_override:"",
+        auditIncomplete:!Object.values(parts).some(Boolean)
+      });
+    }
+  }
+  state.stockBeys=[...keep,...rebuilt].sort((a,b)=>{
+    const lo={BX:1,UX:2,CX:3};
+    return ((lo[a.line]||9)-(lo[b.line]||9)) || (a.num-b.num) || String(a.code).localeCompare(String(b.code),undefined,{numeric:true});
+  });
+
+  const audit=[];
+  for(const pack of RANDOM_BOOSTER_CATALOG){
+    const got=state.stockBeys.filter(b=>b.randomBooster && b.baseCode===pack.code).length;
+    if(got!==pack.count) audit.push(`${pack.code}:${got}/${pack.count}`);
+  }
+  if(audit.length) console.error("Random Booster catalog audit failed",audit);
+  else console.info(`Random Booster catalog audit OK: ${RANDOM_BOOSTER_CATALOG.length} products / ${rebuilt.length} variants`);
+}
+
 const OFFICIAL_RECENT = [
   ...SPECIAL_PRODUCTS,
   ...SPECIAL_SETS
@@ -2226,7 +2454,7 @@ const OFFICIAL_RECENT = [
     }
 
     const b=currentNormalStock();
-    if(!b || b.line==="CX" || b.parts[p.slot]?.key!==p.key) return "";
+    if(!b || b.randomBooster || b.line==="CX" || b.parts[p.slot]?.key!==p.key) return "";
     const base=b.code.replace("-","");
     // Official product pages commonly use _01/_02 for blade views, _03 for Ratchet and _04 for Bit.
     const suffixes=p.slot==="blade" ? ["_01@1","_02@1"] : p.slot==="ratchet" ? ["_03@1"] : p.slot==="bit" ? ["_04@1"] : [];
@@ -2308,6 +2536,7 @@ const OFFICIAL_RECENT = [
 
   function wholeImageForStock(b){
     if(!b) return "";
+    if(b.randomBooster) return b.image_override || "";
     const base=b.code.replace("-","");
     const exactKey=norm(base+"@1");
     if(state.images.All?.[exactKey]) return state.images.All[exactKey];
@@ -2620,7 +2849,7 @@ const OFFICIAL_RECENT = [
     const ux=state.stockBeys.filter(b=>b.line==="UX");
     const cx=state.stockBeys.filter(b=>b.line==="CX");
     const mk=(label,arr)=>arr.length?`<optgroup label="${label}">${arr.map(b=>`<option value="${esc(b.id)}" ${state.stockSelected===b.id?"selected":""}>${esc(stockDisplayOption(b))}</option>`).join("")}</optgroup>`:"";
-    const recentSingles=`<optgroup label="🔥 2026/8–10 新品 / 限定">${SPECIAL_PRODUCTS.map(s=>`<option value="${esc(s.id)}" ${state.stockSelected===s.id?"selected":""}>${esc(s.code+"｜"+s.title+"【"+specialTypeLabel(s)+"】｜"+s.release)}</option>`).join("")}</optgroup>`;
+    const recentSingles=`<optgroup label="🔥 2026/8–10 新品 / 限定">${SPECIAL_PRODUCTS.filter(s=>s.id!=="SPECIAL:CX19").map(s=>`<option value="${esc(s.id)}" ${state.stockSelected===s.id?"selected":""}>${esc(s.code+"｜"+s.title+"【"+specialTypeLabel(s)+"】｜"+s.release)}</option>`).join("")}</optgroup>`;
     const sets=`<optgroup label="📦 套裝 / Deck Set">${SPECIAL_SETS.map(s=>`<option value="${esc(s.id)}" ${state.stockSelected===s.id?"selected":""}>${esc(s.code+"｜"+s.title+"（"+s.beys.length+"顆）")}</option>`).join("")}</optgroup>`;
     sel.innerHTML=`<option value="">— 選擇原廠商品 / 套裝 —</option>${recentSingles}${sets}${mk("BX｜Basic Line",bx)}${mk("UX｜Unique Line",ux)}${mk("CX｜Custom Line",cx)}`;
 
@@ -3957,9 +4186,9 @@ const OFFICIAL_RECENT = [
   function garageCatalogEntries(){
     const out=[];
     for(const b of state.stockBeys){
-      out.push({id:"stock:"+b.id,kind:"stock",ref:b.id,label:`${b.code}｜${b.combo}【${stockTypeLabel(b)}】`,code:b.code,title:b.combo,image:wholeImageForStock(b),parts:b.parts});
+      out.push({id:"stock:"+b.id,kind:"stock",ref:b.id,stockId:b.id,label:`${b.code}｜${b.combo}【${stockTypeLabel(b)}】`,code:b.code,baseCode:b.baseCode||b.code,variantCode:b.variantCode||"",title:b.combo,image:wholeImageForStock(b),parts:b.parts,randomBooster:!!b.randomBooster,leftSpin:!!b.leftSpin});
     }
-    for(const sp of SPECIAL_PRODUCTS){
+    for(const sp of SPECIAL_PRODUCTS.filter(x=>x.id!=="SPECIAL:CX19")){
       out.push({id:"special:"+sp.id,kind:"special",ref:sp.id,label:`${sp.code}｜${sp.title}【${specialTypeLabel(sp)}】`,code:sp.code,title:sp.title,image:sp.image,parts:resolvePartMap(sp.parts||{}),partSpec:sp.parts||{},partImages:sp.partImages||{},partLabels:sp.partLabels||{},partVariantIds:sp.partVariantIds||{},exactParts:!!sp.exactParts,official:sp.official||"",integrated:!!sp.ratchetIntegrated});
     }
     for(const set of SPECIAL_SETS){
@@ -4111,6 +4340,7 @@ const OFFICIAL_RECENT = [
 
   function garageStockPartImage(entry,slot){
     if(!entry || entry.kind!=="stock") return "";
+    if(entry.randomBooster) return "";
 
     // A product code can contain multiple Random Booster / recolour variants.
     // Code-only filenames are safe only when MasterData has exactly one stock model
@@ -5149,6 +5379,7 @@ function renderAll(){ renderReleaseGrid(); renderStockPicker(); renderTabs(); re
 
     ensureSpecialParts();
     buildStockBeys();
+    applyRandomBoosterCatalog();
     $("#liveDot").className=fallbackUsed?"dot":"dot ok";
     $("#liveText").textContent=fallbackUsed?"已載入（部分使用內建清單）":"最新資料已載入";
     renderAll();
