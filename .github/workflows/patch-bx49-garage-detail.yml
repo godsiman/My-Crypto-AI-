@@ -1,0 +1,61 @@
+name: Patch BX-49 Garage detail images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.bx49-garage-detail-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beyblade-x-site
+          fetch-depth: 0
+
+      - name: Patch index.html
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          def one(old,new,label):
+              global s
+              n=s.count(old)
+              if n!=1:
+                  raise SystemExit(f'{label}: expected 1 match, got {n}')
+              s=s.replace(old,new,1)
+
+          one('>V23.14</span>','>V23.15</span>','version')
+
+          old='''  function garageEntryPartImage(entry,slot,p){\n    if(!entry || !p) return \"\";\n    if(entry.partImages?.[slot]) return entry.partImages[slot];\n\n    // UX-21 has verified product-specific official part images.'''
+          new='''  function garageEntryPartImage(entry,slot,p){\n    if(!entry || !p) return \"\";\n    if(entry.partImages?.[slot]) return entry.partImages[slot];\n\n    // BX-49 DranStrike 4-50FF: verified TAKARA TOMY product-specific part images.\n    // The generic 4-50 image in the shared parts DB uses a different colourway,\n    // so My Bey detail must bind to this product's actual blue/white 4-50.\n    if(entry.code===\"BX-49\"){\n      if(slot===\"blade\") return \"https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_01_list.png\";\n      if(slot===\"ratchet\") return \"https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_03_list.png\";\n      if(slot===\"bit\") return \"https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_04_list.png\";\n    }\n\n    // UX-21 has verified product-specific official part images.'''
+          one(old,new,'garage image function')
+
+          old='''    const strictProductImages=entry.kind===\"special\" || entry.kind===\"setbey\";'''
+          new='''    const strictProductImages=entry.kind===\"special\" || entry.kind===\"setbey\" || entry.code===\"BX-49\";'''
+          one(old,new,'strict product images')
+
+          p.write_text(s,encoding='utf-8')
+          print('patched',len(s))
+          PY
+
+          grep -q 'V23.15' index.html
+          grep -q 'entry.code==="BX-49"' index.html
+          grep -q 'BX49_03_list.png' index.html
+
+      - name: Commit patch to site branch
+        shell: bash
+        run: |
+          git config user.name "godsiman"
+          git config user.email "120441322+godsiman@users.noreply.github.com"
+          git add index.html
+          git commit -m "V23.15 fix BX-49 My Bey detail part colors" || exit 0
+          git push origin HEAD:beyblade-x-site
