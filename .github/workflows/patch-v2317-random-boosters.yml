@@ -26,10 +26,10 @@ jobs:
         run: |
           python /tmp/patch.py
           grep -q 'V23.17' index.html
-          grep -q 'CX-08-04' index.html
-          grep -q 'CX-08-06' index.html
-          grep -q 'BX-48' index.html
-          grep -q 'count:5' index.html
+          grep -q '蒼龍爆刃 5-80MN' index.html
+          grep -q '蒼穹龍騎士 4-55WB' index.html
+          grep -q 'name:"Random Booster Vol.9",count:5' index.html
+          grep -q 'name:"Random Booster Vol.11",count:6' index.html
           grep -q 'applyRandomBoosterCatalog();' index.html
           grep -q 'Random Booster catalog audit' index.html
 
