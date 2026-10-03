@@ -808,7 +808,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.13</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.14</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -2192,6 +2192,16 @@ const OFFICIAL_RECENT = [
 
   function stockVariantImageForPart(p){
     if(!p) return "";
+
+    // BX-49 DranStrike 4-50FF: always use this product's official colorway.
+    // Do not fall back to generic shared 4-50 / FF images, which may show another color.
+    const bx49=currentNormalStock();
+    if(bx49?.code==="BX-49"){
+      const orig=bx49.parts||{};
+      if(orig.blade?.key===p.key && p.slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_01_list.png";
+      if(orig.ratchet?.key===p.key && p.slot==="ratchet") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_03_list.png";
+      if(orig.bit?.key===p.key && p.slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_04_list.png";
+    }
     const sp=currentSpecialProduct();
     if(sp){
       const orig=currentStockParts();
