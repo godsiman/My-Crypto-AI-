@@ -2032,7 +2032,13 @@ function randomBoosterComboLabel(parts,v){
 function applyRandomBoosterCatalog(){
   const original=state.stockBeys.slice();
   const managed=new Set(RANDOM_BOOSTER_CATALOG.map(p=>p.code));
-  const keep=original.filter(b=>!managed.has(b.code));
+  const keep=original.filter(b=>{
+    if(!managed.has(b.code)) return true;
+    // BX-00 is reused by many limited/collaboration products. Only replace the
+    // Lightning L-Drago random-booster records; never wipe unrelated BX-00 items.
+    if(b.code==="BX-00") return !/lightning|l-drago|エルドラゴ/i.test([b.title,b.combo,b.model].join(" "));
+    return false;
+  });
   const rebuilt=[];
 
   for(const pack of RANDOM_BOOSTER_CATALOG){
@@ -2549,20 +2555,25 @@ const OFFICIAL_RECENT = [
     return RAW_IMG+"All/"+encodeURIComponent(base+"@1.png");
   }
 
+  function stockUsesCXStructure(b){
+    if(!b) return false;
+    return !!(b.parts?.lock || b.parts?.main || b.parts?.assist || b.parts?.metal || b.parts?.over);
+  }
+
   function stockSlots(b){
     if(!b) return [];
-    if(b.line==="CX"){
+    if(stockUsesCXStructure(b)){
       return ["lock","main","assist","metal","over","ratchet","bit"].filter(s=>b.parts[s] || ["lock","main","assist","ratchet","bit"].includes(s));
     }
-    return ["blade","ratchet","bit"];
+    return ["blade","ratchet","bit"].filter(s=>b.parts[s]);
   }
 
   function stockDisplayOption(b){
-    const stockParts=stockSlots(b).filter(s=>b.parts[s]).map(s=>b.parts[s]?.en).filter(Boolean);
-    const core=b.line==="CX"
+    const cxStructure=stockUsesCXStructure(b);
+    const core=cxStructure
       ? [b.parts.lock?.zh||b.parts.lock?.en,b.parts.main?.zh||b.parts.main?.en,b.parts.assist?.en,b.parts.ratchet?.en,b.parts.bit?.en].filter(Boolean).join(" / ")
       : [b.parts.blade?.zh||b.parts.blade?.en,b.parts.ratchet?.en,b.parts.bit?.en].filter(Boolean).join(" ");
-    return `${b.code}｜${core}【${stockTypeLabel(b)}】`;
+    return `${b.code}｜${core || b.combo}【${stockTypeLabel(b)}】`;
   }
 
   function stockIsOriginal(){
@@ -2653,7 +2664,7 @@ const OFFICIAL_RECENT = [
     if(!b) return;
     state.stockSelected=id;
     state.stockSetBeyId=null;
-    setMode(b.line==="CX"?"cx":"classic");
+    setMode(stockUsesCXStructure(b)?"cx":"classic");
     for(const s of Object.keys(state.selected)) state.selected[s]=null;
     state.stockOriginalSelection={};
     for(const s of stockSlots(b)){
@@ -2661,7 +2672,7 @@ const OFFICIAL_RECENT = [
       state.selected[s]=p;
       if(p) state.stockOriginalSelection[s]=p.key;
     }
-    state.slot=b.line==="CX"?"lock":"blade";
+    state.slot=stockUsesCXStructure(b)?"lock":"blade";
     renderAll();
     toast("已載入原廠配置 "+b.code);
   }
@@ -2673,7 +2684,7 @@ const OFFICIAL_RECENT = [
     if(b){
       for(const s of Object.keys(state.selected)) state.selected[s]=null;
       for(const s of stockSlots(b)) if(b.parts[s]) state.selected[s]=b.parts[s];
-      setMode(b.line==="CX"?"cx":"classic");
+      setMode(stockUsesCXStructure(b)?"cx":"classic");
       renderAll();
       toast("已恢復原廠配置");
       return;
