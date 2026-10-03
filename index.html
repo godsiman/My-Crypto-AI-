@@ -578,6 +578,20 @@
     .garagePanelHead p{margin:4px 0 0;color:var(--muted);font-size:9px;line-height:1.45}
     .garageBeys{display:grid;gap:7px}
     .garageBeyRow{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:9px;align-items:center;border:1px solid var(--line);background:#0b1016;border-radius:11px;padding:8px}
+    .garageBeyRow[data-gdetail]{cursor:pointer;transition:border-color .15s,background .15s,transform .15s}
+    .garageBeyRow[data-gdetail]:hover,.garageBeyRow[data-gdetail]:focus-visible{border-color:#486078;background:#0e151e;outline:none}
+    .garageBeyRow[data-gdetail]:active{transform:scale(.995)}
+    .garageBeyInfo .garageOpenHint{display:inline-flex;margin-top:5px;color:#7ce5ba;font-size:8px;font-weight:900}
+    .beyDetailHero{display:grid;grid-template-columns:minmax(180px,280px) minmax(0,1fr);gap:16px;align-items:center}
+    .beyDetailWhole{background:#f4f6f8;border-radius:14px;min-height:220px;display:grid;place-items:center;overflow:hidden}
+    .beyDetailWhole img{display:block;max-width:100%;max-height:300px;width:auto;height:auto;object-fit:contain}
+    .beyDetailTitle h2{margin:5px 0 5px;font-size:22px}.beyDetailTitle p{margin:0;color:#8e9baa;font-size:10px;line-height:1.5}
+    .beyDetailParts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:15px}
+    .beyPartCard{border:1px solid var(--line);background:#0b1016;border-radius:12px;padding:9px;text-align:left;color:var(--text);cursor:pointer;min-width:0}
+    .beyPartCard:hover{border-color:#486078;background:#0f1721}.beyPartImg{height:92px;border-radius:9px;background:#f4f6f8;display:grid;place-items:center;overflow:hidden}
+    .beyPartImg img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}.beyPartCard strong{display:block;margin-top:7px;font-size:10px;line-height:1.35}.beyPartCard small{display:block;margin-top:3px;color:#8290a0;font-size:8px;line-height:1.35}
+    .beyDetailNote{margin-top:10px;color:#8290a0;font-size:9px;line-height:1.5}.beySetGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}.beySetItem{border:1px solid var(--line);background:#0b1016;border-radius:12px;padding:9px;color:var(--text);text-align:left;cursor:pointer}.beySetItem img{display:block;width:100%;height:150px;object-fit:contain;background:#f4f6f8;border-radius:9px}.beySetItem b{display:block;margin-top:7px;font-size:10px}
+    @media(max-width:700px){.beyDetailHero{grid-template-columns:1fr}.beyDetailWhole{min-height:180px}.beyDetailParts{grid-template-columns:repeat(2,minmax(0,1fr))}.beySetGrid{grid-template-columns:1fr}}
     .garageBeyImg{width:56px;height:56px;border-radius:9px;background:#f4f5f7;display:grid;place-items:center;overflow:hidden}
     .garageBeyImg img{width:100%;height:100%;object-fit:contain}
     .garageBeyInfo{min-width:0}.garageBeyInfo b{display:block;font-size:11px;line-height:1.35}
@@ -794,7 +808,7 @@
 <div class="app">
   <header>
     <div class="brand">
-      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.11</span></h1>
+      <h1>BEYBLADE X 配裝實驗室 <span style="font-size:.38em;color:#7f8b99;vertical-align:middle">V23.12</span></h1>
       <p>全零件選擇・即時能力換算・缺件與購買來源</p>
     </div>
     <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">載入資料中</span></div>
@@ -4056,20 +4070,60 @@ const OFFICIAL_RECENT = [
     else if(query && entries[0]) sel.value=entries[0].id;
   }
 
+  const BEY_DETAIL_SLOT_ORDER=["blade","lock","main","assist","metal","over","ratchet","bit"];
+
+  function garageEntryPartRows(entry){
+    if(!entry) return [];
+    return BEY_DETAIL_SLOT_ORDER.map(slot=>[slot,entry.parts?.[slot]]).filter(([slot,p])=>{
+      if(!p) return false;
+      if(entry.integrated && slot==="ratchet") return false;
+      return true;
+    });
+  }
+
+  function showGarageBeyDetail(entry){
+    if(!entry) return;
+    const dlg=$("#partDialog");
+    const content=$("#dialogContent");
+    if(entry.kind==="set"){
+      const beys=entry.set?.beys||[];
+      content.innerHTML=`<div class="detailInfo"><div class="eyebrow">MY BEYS / SET</div><div class="detailTitle">${esc(entry.code)}｜${esc(entry.title)}</div><div class="detailDesc">這是整盒套裝。點下面任一顆，可以再看整顆圖片與它的原廠零件。</div><div class="beySetGrid">${beys.map((b,i)=>`<button type="button" class="beySetItem" data-setdetail="${i}">${b.image?`<img src="${esc(b.image)}" alt="${esc(b.name)}">`:""}<b>${esc(b.name)}</b></button>`).join("")}</div></div>`;
+      content.querySelectorAll("[data-setdetail]").forEach(btn=>btn.addEventListener("click",()=>{
+        const b=beys[Number(btn.dataset.setdetail)]; if(!b) return;
+        showGarageBeyDetail({kind:"setbey",code:entry.code,title:b.name,image:b.image,parts:resolvePartMap(b.parts||{blade:b.blade,ratchet:b.ratchet,bit:b.bit}),integrated:!!b.ratchetIntegrated});
+      }));
+      if(typeof dlg.showModal==="function" && !dlg.open) dlg.showModal(); else dlg.setAttribute("open","");
+      return;
+    }
+
+    const rows=garageEntryPartRows(entry);
+    const structure=entry.integrated?"UX Expand／Ratchet 一體結構":rows.some(([slot])=>["lock","main","assist"].includes(slot))?"CX 可拆上蓋結構":"BX / UX 標準結構";
+    content.innerHTML=`<div class="beyDetailHero"><div class="beyDetailWhole">${entry.image?`<img src="${esc(entry.image)}" alt="${esc(entry.title)}">`:`<div class="fallback">目前沒有整顆圖片</div>`}</div><div class="beyDetailTitle"><div class="eyebrow">MY BEY / ORIGINAL PARTS</div><h2>${esc(entry.code)}｜${esc(entry.title)}</h2><p>${esc(structure)}</p><div class="detailDesc">點下面任一零件，可看零件實物圖、能力資料，以及還有哪些原廠陀螺也有這個零件。</div></div></div><div class="beyDetailParts">${rows.map(([slot,p],i)=>{const src=findImage(p);return `<button type="button" class="beyPartCard" data-beypart="${i}"><div class="beyPartImg">${src?`<img src="${esc(src)}" alt="${esc(displayNameForPart(p))}">`:`<span class="fallback">無圖</span>`}</div><strong>${esc(LABELS[slot]||slot)}｜${esc(displayNameForPart(p))}</strong><small>${esc(typeLabelZh(p.type)||"")}</small></button>`}).join("")}</div><div class="beyDetailNote">這裡顯示的是這顆原廠配置；你之後改裝過的配法不會覆蓋原廠零件資料。</div>`;
+    content.querySelectorAll("[data-beypart]").forEach(btn=>btn.addEventListener("click",()=>{
+      const row=rows[Number(btn.dataset.beypart)]; if(row?.[1]) showPartDetail(row[1]);
+    }));
+    if(typeof dlg.showModal==="function" && !dlg.open) dlg.showModal(); else dlg.setAttribute("open","");
+  }
+
   function renderGarageBeys(){
     const box=$("#garageBeys"); if(!box) return;
     $("#garageBeyCount").textContent=garageExpandedBeys().length+" 顆";
     if(!state.garageItems.length){box.innerHTML='<div class="garageEmpty">還沒有加入陀螺。上面可直接選原廠商品，Deck Set 也能整盒或單顆加入。</div>';return;}
     box.innerHTML=state.garageItems.map(item=>{
       const e=garageEntryById(item.id); if(!e) return "";
-      return `<div class="garageBeyRow">
+      return `<div class="garageBeyRow" data-gdetail="${esc(item.id)}" role="button" tabindex="0" aria-label="查看 ${esc(e.code)} ${esc(e.title)} 的原廠零件">
         <div class="garageBeyImg">${e.image?`<img src="${esc(e.image)}" alt="${esc(e.title)}">`:""}</div>
-        <div class="garageBeyInfo"><b>${esc(e.code)} ${esc(e.title)}</b><span>${esc(e.label)}</span></div>
-        <div class="qtyCtrl"><button type="button" data-gminus="${esc(item.id)}">−</button><strong>${item.qty||1}</strong><button type="button" data-gplus="${esc(item.id)}">＋</button></div>
+        <div class="garageBeyInfo"><b>${esc(e.code)} ${esc(e.title)}</b><span>${esc(e.label)}</span><span class="garageOpenHint">點我看整顆與原廠零件 ›</span></div>
+        <div class="qtyCtrl"><button type="button" data-gminus="${esc(item.id)}" aria-label="減少數量">−</button><strong>${item.qty||1}</strong><button type="button" data-gplus="${esc(item.id)}" aria-label="增加數量">＋</button></div>
       </div>`;
     }).join("");
-    box.querySelectorAll("[data-gminus]").forEach(b=>b.addEventListener("click",()=>garageChangeQty(b.dataset.gminus,-1)));
-    box.querySelectorAll("[data-gplus]").forEach(b=>b.addEventListener("click",()=>garageChangeQty(b.dataset.gplus,1)));
+    box.querySelectorAll("[data-gminus]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();garageChangeQty(b.dataset.gminus,-1)}));
+    box.querySelectorAll("[data-gplus]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();garageChangeQty(b.dataset.gplus,1)}));
+    box.querySelectorAll("[data-gdetail]").forEach(row=>{
+      const open=()=>showGarageBeyDetail(garageEntryById(row.dataset.gdetail));
+      row.addEventListener("click",e=>{if(!e.target.closest(".qtyCtrl")) open();});
+      row.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});
+    });
   }
 
   function renderGarageParts(){
