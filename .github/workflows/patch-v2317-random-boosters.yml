@@ -1,0 +1,42 @@
+name: Patch V23.17 random booster catalog
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.v2317-random-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout site branch
+        uses: actions/checkout@v4
+        with:
+          ref: beyblade-x-site
+          fetch-depth: 0
+
+      - name: Load patch script from main
+        run: git show origin/main:.patch-v2317-random-boosters.py > /tmp/patch.py
+
+      - name: Patch and verify
+        run: |
+          python /tmp/patch.py
+          grep -q 'V23.17' index.html
+          grep -q 'CX-08-04' index.html
+          grep -q 'CX-08-06' index.html
+          grep -q 'BX-48' index.html
+          grep -q 'count:5' index.html
+          grep -q 'applyRandomBoosterCatalog();' index.html
+          grep -q 'Random Booster catalog audit' index.html
+
+      - name: Commit to site branch
+        run: |
+          git config user.name "godsiman"
+          git config user.email "120441322+godsiman@users.noreply.github.com"
+          git add index.html
+          git commit -m "V23.17 complete Random Booster and Select variant catalog" || exit 0
+          git push origin HEAD:beyblade-x-site
