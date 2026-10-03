@@ -1,10 +1,11 @@
-name: Patch all My Bey product-specific part images
+name: Patch all My Bey product images
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - '.all-my-bey-part-images-trigger'
+      - .all-my-bey-part-images-trigger
 
 permissions:
   contents: write
@@ -13,151 +14,33 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout site branch
+        uses: actions/checkout@v4
         with:
           ref: beyblade-x-site
           fetch-depth: 0
 
-      - name: Audit and patch My Bey detail image resolution
-        shell: bash
+      - name: Load patch script from main
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('index.html')
-          s=p.read_text(encoding='utf-8')
+          git fetch origin main
+          git show origin/main:.patch-v2316.py > /tmp/patch-v2316.py
 
-          def one(old,new,label):
-              global s
-              n=s.count(old)
-              if n!=1:
-                  raise SystemExit(f'{label}: expected 1 match, got {n}')
-              s=s.replace(old,new,1)
-
-          one('>V23.15</span>','>V23.16</span>','version')
-
-          old='''  function garageEntryPartImage(entry,slot,p){
-    if(!entry || !p) return "";
-    if(entry.partImages?.[slot]) return entry.partImages[slot];
-
-    // BX-49 DranStrike 4-50FF: verified TAKARA TOMY product-specific part images.
-    // The generic 4-50 image in the shared parts DB uses a different colourway,
-    // so My Bey detail must bind to this product's actual blue/white 4-50.
-    if(entry.code==="BX-49"){
-      if(slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_01_list.png";
-      if(slot==="ratchet") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_03_list.png";
-      if(slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_04_list.png";
-    }
-
-    // UX-21 has verified product-specific official part images.
-    if(entry.kind==="setbey"){
-      if(entry.beyId==="UX21-01" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_02%401.png";
-      if(entry.beyId==="UX21-01" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_04%401.png";
-      if(entry.beyId==="UX21-02" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_05%401.png";
-      if(entry.beyId==="UX21-02" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_08%401.png";
-      if(entry.beyId==="UX21-03" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_09%401.png";
-      if(entry.beyId==="UX21-03" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_12%401.png";
-    }
-
-    // Special / collaboration products must never borrow a generic same-code image
-    // from another Bey. If the product-specific picture is not verified, show no
-    // picture rather than a misleading colour/shape.
-    if(entry.kind==="special" || entry.kind==="setbey") return "";
-    return findImage(p);
-  }'''
-
-          new='''  function garageStockPartImage(entry,slot){
-    if(!entry || entry.kind!=="stock") return "";
-
-    // A product code can contain multiple Random Booster / recolour variants.
-    // Code-only filenames are safe only when the MasterData has exactly one stock
-    // model for that code. Otherwise an image could be the correct part code but
-    // the wrong colourway, so leave it blank instead of guessing.
-    const sameCode=state.stockBeys.filter(b=>b.code===entry.code);
-    if(sameCode.length!==1) return "";
-    const stock=sameCode[0];
-    if(entry.stockId && stock.id!==entry.stockId) return "";
-
-    // The image database follows the official BX/UX product-page convention for
-    // standard products: 01/02 = Blade, 03 = Ratchet, 04 = Bit. CX has more upper
-    // components and does not have one universal suffix layout, so CX remains blank
-    // unless an explicit product-specific mapping is available.
-    if(stock.line==="CX") return "";
-    const base=entry.code.replace("-","");
-    const suffixes=slot==="blade"
-      ? ["_01@1","_01_list","_01","_02@1","_02_list","_02"]
-      : slot==="ratchet"
-      ? ["_03@1","_03_list","_03"]
-      : slot==="bit"
-      ? ["_04@1","_04_list","_04"]
-      : [];
-    for(const suffix of suffixes){
-      const hit=allImageKey(base,suffix);
-      if(hit) return hit;
-    }
-    return "";
-  }
-
-  function garageEntryPartImage(entry,slot,p){
-    if(!entry || !p) return "";
-    if(entry.partImages?.[slot]) return entry.partImages[slot];
-
-    // BX-49 DranStrike 4-50FF: verified TAKARA TOMY product-specific part images.
-    // The generic 4-50 image in the shared parts DB uses a different colourway.
-    if(entry.code==="BX-49"){
-      if(slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_01_list.png";
-      if(slot==="ratchet") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_03_list.png";
-      if(slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_04_list.png";
-    }
-
-    // UX-21 verified product-specific official part images.
-    if(entry.kind==="setbey"){
-      if(entry.beyId==="UX21-01" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_02%401.png";
-      if(entry.beyId==="UX21-01" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_04%401.png";
-      if(entry.beyId==="UX21-02" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_05%401.png";
-      if(entry.beyId==="UX21-02" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_08%401.png";
-      if(entry.beyId==="UX21-03" && slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_09%401.png";
-      if(entry.beyId==="UX21-03" && slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/UX21_12%401.png";
-    }
-
-    // Normal BX/UX stock: only use an exact product-code image when that product
-    // code resolves to one stock model. Random Booster/recolour codes stay blank.
-    const stockHit=garageStockPartImage(entry,slot);
-    if(stockHit) return stockHit;
-
-    // My Bey original configuration is strict for ALL products. Never fall back to
-    // generic findImage(p): a shared 4-50 / 3-60 / T / R picture may be another
-    // product's colourway even though the mechanical part code is the same.
-    return "";
-  }'''
-          one(old,new,'systemic image resolver')
-
-          old='''        showGarageBeyDetail({kind:"setbey",code:entry.code,title:b.name,image:b.image,parts:resolvePartMap(b.parts||{blade:b.blade,ratchet:b.ratchet,bit:b.bit}),integrated:!!b.ratchetIntegrated});'''
-          new='''        showGarageBeyDetail({kind:"setbey",beyId:b.id,code:entry.code,title:b.name,image:b.image,parts:resolvePartMap(b.parts||{blade:b.blade,ratchet:b.ratchet,bit:b.bit}),integrated:!!b.ratchetIntegrated,partImages:b.partImages||{},partLabels:b.partLabels||{},partVariantIds:b.partVariantIds||{}});'''
-          one(old,new,'preserve set bey identity')
-
-          one('''    const strictProductImages=entry.kind==="special" || entry.kind==="setbey" || entry.code==="BX-49";''','''    const strictProductImages=true;''','strict all products')
-
-          old='''<div class="detailDesc">${strictProductImages?"上方優先顯示這個商品自己的官方整顆／拆件素材；下方零件只有核對到商品專屬圖片才顯示，不會再拿別顆同代號零件的配色圖代替。":"點下面任一零件，可看零件實物圖、能力資料，以及還有哪些原廠陀螺也有這個零件。"}</div>'''
-          new='''<div class="detailDesc">上方顯示這個商品自己的整顆素材；下方零件只有能對到這個商品／配色的分件圖才顯示。找不到專屬圖就留白，不會拿其他陀螺同代號零件圖代替。</div>'''
-          one(old,new,'detail explanation')
-
-          one('''<div class="beyDetailNote">這裡只顯示這顆原廠配置。特殊／限定配色若沒有商品專屬零件圖，就留白標示，不再用其他商品的共用圖冒充。</div>''','''<div class="beyDetailNote">這裡只顯示這顆原廠配置。BX／UX／CX 都採商品配色嚴格模式：沒有核對到該商品自己的分件圖就留白，不使用其他商品的共用配色圖。</div>''','detail note')
-
-          p.write_text(s,encoding='utf-8')
-          print('patched',len(s))
-          PY
-
+      - name: Patch and verify
+        run: |
+          python /tmp/patch-v2316.py
           grep -q 'V23.16' index.html
           grep -q 'function garageStockPartImage' index.html
           grep -q 'const strictProductImages=true' index.html
           grep -q 'beyId:b.id' index.html
-          ! grep -A90 'function garageEntryPartImage' index.html | grep -q 'return findImage(p)'
+          if grep -A90 'function garageEntryPartImage' index.html | grep -q 'return findImage(p)'; then
+            echo 'Unsafe generic image fallback still exists'
+            exit 1
+          fi
 
-      - name: Commit audited fix to site branch
-        shell: bash
+      - name: Commit to site branch
         run: |
-          git config user.name "godsiman"
-          git config user.email "120441322+godsiman@users.noreply.github.com"
+          git config user.name godsiman
+          git config user.email 120441322+godsiman@users.noreply.github.com
           git add index.html
-          git commit -m "V23.16 audit all My Bey product-specific part images" || exit 0
+          git commit -m 'V23.16 audit all My Bey product-specific part images'
           git push origin HEAD:beyblade-x-site
