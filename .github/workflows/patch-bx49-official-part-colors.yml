@@ -1,0 +1,56 @@
+name: Patch BX-49 official part colors
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.bx49-part-color-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beyblade-x-site
+          fetch-depth: 0
+
+      - name: Patch index.html
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          if '>V23.13</span>' in s:
+              s=s.replace('>V23.13</span>','>V23.14</span>',1)
+          elif '>V23.14</span>' not in s:
+              raise SystemExit('version marker not found')
+
+          needle='''  function stockVariantImageForPart(p){\n    if(!p) return "";\n'''
+          insert='''  function stockVariantImageForPart(p){\n    if(!p) return "";\n\n    // BX-49 DranStrike 4-50FF: always use this product's official colorway.\n    // Do not fall back to generic shared 4-50 / FF images, which may show another color.\n    const bx49=currentNormalStock();\n    if(bx49?.code==="BX-49"){\n      const orig=bx49.parts||{};\n      if(orig.blade?.key===p.key && p.slot==="blade") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_01_list.png";\n      if(orig.ratchet?.key===p.key && p.slot==="ratchet") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_03_list.png";\n      if(orig.bit?.key===p.key && p.slot==="bit") return "https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX49_04_list.png";\n    }\n'''
+          if insert not in s:
+              if needle not in s:
+                  raise SystemExit('stockVariantImageForPart marker not found')
+              s=s.replace(needle,insert,1)
+
+          p.write_text(s,encoding='utf-8')
+          print('patched',len(s))
+          PY
+
+          grep -q 'V23.14' index.html
+          grep -q 'BX49_03_list.png' index.html
+          grep -q 'BX49_04_list.png' index.html
+
+      - name: Commit patch to site branch
+        shell: bash
+        run: |
+          git config user.name "godsiman"
+          git config user.email "120441322+godsiman@users.noreply.github.com"
+          git add index.html
+          git commit -m "V23.14 fix BX-49 official part colors" || exit 0
+          git push origin HEAD:beyblade-x-site
